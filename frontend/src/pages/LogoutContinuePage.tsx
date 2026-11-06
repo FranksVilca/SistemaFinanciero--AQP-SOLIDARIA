@@ -1,12 +1,16 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { continueHostedUiLogout } from "../auth/authService.js";
 import { Loader2 } from "lucide-react";
 
 export const LogoutContinuePage: React.FC = () => {
   const navigate = useNavigate();
+  // StrictMode runs effects twice in development; each run consumes a queued hop.
+  const started = useRef(false);
 
   useEffect(() => {
+    if (started.current) return;
+    started.current = true;
     if (!continueHostedUiLogout()) {
       navigate("/", { replace: true });
     }

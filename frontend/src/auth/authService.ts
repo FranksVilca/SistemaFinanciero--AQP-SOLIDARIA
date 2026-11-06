@@ -1,5 +1,10 @@
 import { UserManager, WebStorageStateStore, InMemoryWebStorage, User } from "oidc-client-ts";
-import { buildHostedUiLogoutUrls, realmsMissingHostedUiDomain } from "./logoutChain.js";
+import {
+  buildHostedUiLogoutUrls,
+  realmsMissingHostedUiDomain,
+  takeNextLogoutHop,
+  type LogoutQueue,
+} from "./logoutChain.js";
 
 // Two separate Cognito user pools (CA-11.1): donors (MFA optional) and staff GESTOR/AUDITOR (MFA TOTP mandatory).
 export type AuthRealm = "donor" | "staff";
@@ -37,6 +42,7 @@ const realmConfigs: Record<AuthRealm, RealmConfig> = {
 const postLogoutRedirectUri = window.location.origin;
 
 // Zero Trust Browser Hardening: Tokens kept strictly in memory, never in localStorage/sessionStorage
+// (sessionStorage only holds the pending Hosted UI logout URLs, see LOGOUT_QUEUE_KEY)
 function createUserManager(config: RealmConfig): UserManager {
   return new UserManager({
     authority: config.authority,
@@ -69,7 +75,9 @@ const LOGOUT_QUEUE_KEY = "aqp.pendingHostedUiLogout";
 
 export async function logoutWithOidc(): Promise<void> {
   const realms = Object.keys(userManagers) as AuthRealm[];
-  const hostedUiRealms = realms.map((realm) => ({ realm, ...realmConfigs[realm] }));
+  const hostedUiRealms = hostedUiRealmList();
+  // A fresh logout never resumes leftovers from an earlier, abandoned one.
+  saveLogoutQueue(null);
 
   for (const realm of realmsMissingHostedUiDomain(hostedUiRealms)) {
     console.warn(
@@ -104,36 +112,38 @@ export async function logoutWithOidc(): Promise<void> {
     window.location.href = postLogoutRedirectUri;
     return;
   }
-  saveLogoutQueue(rest);
+  if (rest.length) saveLogoutQueue({ createdAt: Date.now(), urls: rest });
   window.location.href = first;
 }
 
-// Called on LOGOUT_CONTINUE_PATH. Returns false once every Hosted UI session has ended.
+// Called on LOGOUT_CONTINUE_PATH (see logoutChain.ts). Returns false once every Hosted UI session has ended.
 export function continueHostedUiLogout(): boolean {
-  const [next, ...rest] = readLogoutQueue();
-  if (!next) {
-    saveLogoutQueue([]);
-    return false;
-  }
-  saveLogoutQueue(rest);
+  const { next, remaining } = takeNextLogoutHop(readLogoutQueue(), Date.now(), hostedUiRealmList());
+  saveLogoutQueue(remaining ?? null);
+  if (!next) return false;
   window.location.href = next;
   return true;
 }
 
-function readLogoutQueue(): string[] {
+function hostedUiRealmList() {
+  return (Object.keys(realmConfigs) as AuthRealm[]).map((realm) => ({ realm, ...realmConfigs[realm] }));
+}
+
+function readLogoutQueue(): unknown {
   try {
-    const parsed: unknown = JSON.parse(sessionStorage.getItem(LOGOUT_QUEUE_KEY) ?? "[]");
-    return Array.isArray(parsed) ? parsed.filter((url): url is string => typeof url === "string") : [];
+    return JSON.parse(sessionStorage.getItem(LOGOUT_QUEUE_KEY) ?? "null");
   } catch {
-    return [];
+    return null;
   }
 }
 
-function saveLogoutQueue(urls: string[]): void {
+function saveLogoutQueue(queue: LogoutQueue | null): void {
   try {
-    if (urls.length) sessionStorage.setItem(LOGOUT_QUEUE_KEY, JSON.stringify(urls));
+    if (queue) sessionStorage.setItem(LOGOUT_QUEUE_KEY, JSON.stringify(queue));
     else sessionStorage.removeItem(LOGOUT_QUEUE_KEY);
   } catch {
-    // Storage unavailable: remaining hops are skipped, the current realm still logs out.
+    if (queue) {
+      console.warn("Session storage unavailable: remaining Hosted UI sessions will not be ended");
+    }
   }
 }

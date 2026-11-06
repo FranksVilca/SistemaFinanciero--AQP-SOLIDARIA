@@ -190,9 +190,12 @@ Resources:
         - api/donations.read
       CallbackURLs:
         - http://localhost:3000/auth/callback
+        - !Sub "https://${CloudFrontDistribution.DomainName}/auth/callback"
       LogoutURLs:
         - http://localhost:3000
         - http://localhost:3000/auth/logout/continue
+        - !Sub "https://${CloudFrontDistribution.DomainName}"
+        - !Sub "https://${CloudFrontDistribution.DomainName}/auth/logout/continue"
 
   CognitoUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
@@ -279,9 +282,12 @@ Resources:
         - api/audit.read
       CallbackURLs:
         - http://localhost:3000/auth/staff/callback
+        - !Sub "https://${CloudFrontDistribution.DomainName}/auth/staff/callback"
       LogoutURLs:
         - http://localhost:3000
         - http://localhost:3000/auth/logout/continue
+        - !Sub "https://${CloudFrontDistribution.DomainName}"
+        - !Sub "https://${CloudFrontDistribution.DomainName}/auth/logout/continue"
 
   StaffUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain

@@ -164,6 +164,18 @@ describe("Cognito Hosted UI domains (CA-03.1)", () => {
     expect(logoutUrls.some((url) => url.endsWith("/auth/logout/continue"))).toBe(true);
   });
 
+  it.each([
+    [DONOR_CLIENT, "/auth/callback"],
+    [STAFF_CLIENT, "/auth/staff/callback"],
+  ])("%s registers the CloudFront origin for callback and logout, not only localhost", (client, callbackPath) => {
+    const props = resources[client].Properties as { CallbackURLs: unknown[]; LogoutURLs: unknown[] };
+    const viaCloudFront = (urls: unknown[]) =>
+      urls.map((url) => JSON.stringify(url)).filter((url) => url.includes("${CloudFrontDistribution.DomainName}"));
+    expect(viaCloudFront(props.CallbackURLs).some((url) => url.includes(callbackPath))).toBe(true);
+    const logout = viaCloudFront(props.LogoutURLs);
+    expect(logout.some((url) => url.includes("/auth/logout/continue"))).toBe(true);
+  });
+
   it("donor and staff domains are distinct", () => {
     const [donor, staff] = [domainFor(DONOR_POOL), domainFor(STAFF_POOL)];
     expect(JSON.stringify(donor?.[1].Properties?.Domain)).not.toBe(
