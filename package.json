@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Plataforma de Donaciones Seguras Zero Trust - Fundaci\u00f3n AQP-SOLIDARIA",
+  "description": "Plataforma de Donaciones Seguras Zero Trust - Fundación AQP-SOLIDARIA",
   "workspaces": [
     "backend",
     "frontend"
