@@ -1,0 +1,519 @@
+openapi: 3.1.0
+info:
+  title: Plataforma de Donaciones Seguras - Fundación AQP-SOLIDARIA
+  version: 2.0.0
+  description: >
+    API REST para la gestión de proyectos sociales e intenciones de donaciones simuladas
+    bajo arquitectura Serverless y modelo de seguridad Zero Trust (NIST SP 800-207).
+servers:
+  - url: https://{apiId}.execute-api.{region}.amazonaws.com/v1
+    description: API Gateway HTTP API Stage
+    variables:
+      apiId:
+        default: academic-api
+      region:
+        default: us-east-1
+
+paths:
+  /projects:
+    get:
+      summary: Listar proyectos publicados
+      description: Retorna la lista de proyectos con estado PUBLICADO. Los borradores son excluidos.
+      operationId: listProjects
+      responses:
+        '200':
+          description: Lista de proyectos publicados
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Project'
+    post:
+      summary: Crear nuevo proyecto (solo GESTOR)
+      description: Registra un proyecto en estado BORRADOR.
+      operationId: createProject
+      security:
+        - CognitoJWT:
+            - api/projects.write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+      responses:
+        '201':
+          description: Proyecto creado exitosamente en BORRADOR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+
+  /projects/{projectId}:
+    get:
+      summary: Consultar detalle de proyecto
+      description: Retorna información de un proyecto PUBLICADO. Si no existe o es BORRADOR, responde 404 para no filtrar existencia a visitantes.
+      operationId: getProject
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Detalle del proyecto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+
+  /projects/{projectId}/stats:
+    get:
+      summary: Consultar estadísticas agregadas públicas
+      description: Retorna la meta y el monto acumulado de donaciones confirmadas en PEN.
+      operationId: getProjectStats
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Estadísticas agregadas del proyecto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectStats'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+
+  /projects/{projectId}/publish:
+    patch:
+      summary: Publicar proyecto (solo GESTOR)
+      description: Transiciona el proyecto de BORRADOR a PUBLICADO.
+      operationId: publishProject
+      security:
+        - CognitoJWT:
+            - api/projects.write
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Proyecto publicado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '409':
+          description: Conflicto (proyecto ya publicado o estado inválido)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /donations:
+    post:
+      summary: Registrar intención de donación simulada (solo DONANTE)
+      description: Registra una intención de donación en estado PENDIENTE_SIMULACION. Requiere cabecera Idempotency-Key.
+      operationId: createDonation
+      security:
+        - CognitoJWT:
+            - api/donations.write
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Identificador de idempotencia único por transacción
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDonationRequest'
+      responses:
+        '201':
+          description: Intención de donación registrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Donation'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          description: Proyecto no encontrado
+          $ref: '#/components/responses/404NotFound'
+        '409':
+          description: Conflicto de idempotencia (clave reutilizada con payload distinto) o proyecto no PUBLICADO
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /donations/{donationId}/simulate:
+    post:
+      summary: Simular confirmación o rechazo (solo DONANTE propietario, stage académico)
+      description: Permite confirmar o rechazar una donación propia. Solo desplegado en stage académico.
+      operationId: simulateDonation
+      security:
+        - CognitoJWT:
+            - api/donations.write
+      parameters:
+        - name: donationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SimulateDonationRequest'
+      responses:
+        '200':
+          description: Donación transicionada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Donation'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          description: Prohibido (intento de manipular donación ajena - BOLA)
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '409':
+          description: Transición inválida o donación ya confirmada/rechazada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /donations/me:
+    get:
+      summary: Consultar historial propio (solo DONANTE)
+      description: Retorna únicamente las donaciones asociadas al `sub` del usuario autenticado.
+      operationId: getMyDonations
+      security:
+        - CognitoJWT:
+            - api/donations.read
+      responses:
+        '200':
+          description: Historial de donaciones del donante autenticado
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Donation'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+
+  /audit:
+    get:
+      summary: Consultar eventos de auditoría (solo AUDITOR)
+      description: Retorna registros inmutables de auditoría filtrados por rango de fecha y tipo de evento.
+      operationId: getAuditEvents
+      security:
+        - CognitoJWT:
+            - api/audit.read
+      parameters:
+        - name: eventType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Lista de eventos de auditoría
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditEvent'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+
+components:
+  securitySchemes:
+    CognitoJWT:
+      type: oauth2
+      description: Autenticación mediante Cognito User Pool HTTP API JWT Authorizer
+      flows:
+        authorizationCode:
+          authorizationUrl: https://{cognitoDomain}.auth.{region}.amazoncognito.com/oauth2/authorize
+          tokenUrl: https://{cognitoDomain}.auth.{region}.amazoncognito.com/oauth2/token
+          scopes:
+            openid: Identificador de usuario OIDC
+            profile: Perfil de usuario
+            email: Correo electrónico
+            api/projects.write: Permiso para gestionar proyectos
+            api/donations.write: Permiso para registrar y simular donaciones
+            api/donations.read: Permiso para consultar historial de donaciones propias
+            api/audit.read: Permiso para consultar logs de auditoría
+
+  responses:
+    400BadRequest:
+      description: Solicitud malformada o validación fallida
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    401Unauthorized:
+      description: Credencial ausente, inválida, expirada o ID token utilizado indebidamente
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    403Forbidden:
+      description: Rol insuficiente o intento de acceso a recurso ajeno
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    404NotFound:
+      description: Recurso no encontrado o no publicado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    Project:
+      type: object
+      required:
+        - projectId
+        - title
+        - description
+        - goalAmountCents
+        - confirmedAmountCents
+        - currency
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+          minLength: 10
+          maxLength: 2000
+        goalAmountCents:
+          type: integer
+          minimum: 1000
+        confirmedAmountCents:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          enum: [PEN]
+        status:
+          type: string
+          enum: [BORRADOR, PUBLICADO]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ProjectStats:
+      type: object
+      required:
+        - projectId
+        - goalAmountCents
+        - confirmedAmountCents
+        - currency
+        - progressPercentage
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        goalAmountCents:
+          type: integer
+        confirmedAmountCents:
+          type: integer
+        currency:
+          type: string
+          enum: [PEN]
+        progressPercentage:
+          type: number
+
+    CreateProjectRequest:
+      type: object
+      required:
+        - title
+        - description
+        - goalAmountCents
+      properties:
+        title:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+          minLength: 10
+          maxLength: 2000
+        goalAmountCents:
+          type: integer
+          minimum: 1000
+
+    Donation:
+      type: object
+      required:
+        - donationId
+        - projectId
+        - donorSub
+        - amountCents
+        - currency
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        donationId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        donorSub:
+          type: string
+        amountCents:
+          type: integer
+          minimum: 100
+          maximum: 100000
+        currency:
+          type: string
+          enum: [PEN]
+        status:
+          type: string
+          enum: [PENDIENTE_SIMULACION, CONFIRMADA_SIMULADA, RECHAZADA_SIMULADA]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateDonationRequest:
+      type: object
+      required:
+        - projectId
+        - amountCents
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        amountCents:
+          type: integer
+          minimum: 100
+          maximum: 100000
+
+    SimulateDonationRequest:
+      type: object
+      required:
+        - action
+      properties:
+        action:
+          type: string
+          enum: [CONFIRMAR, RECHAZAR]
+
+    AuditEvent:
+      type: object
+      required:
+        - eventId
+        - timestamp
+        - requestId
+        - actorRef
+        - resourceRef
+        - action
+        - outcome
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        requestId:
+          type: string
+        actorRef:
+          type: string
+        resourceRef:
+          type: string
+        action:
+          type: string
+        outcome:
+          type: string
+          enum: [SUCCESS, DENIED, FAILED]
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+        - requestId
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        requestId:
+          type: string

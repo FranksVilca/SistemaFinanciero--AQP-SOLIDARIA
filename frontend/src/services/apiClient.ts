@@ -1,0 +1,86 @@
+import { Project, Donation } from "../types/index.js";
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/v1";
+
+interface RequestOptions extends RequestInit {
+  token?: string;
+  idempotencyKey?: string;
+}
+
+export async function apiFetch<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+  const { token, idempotencyKey, headers = {}, ...rest } = options;
+
+  const requestHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(headers as Record<string, string>),
+  };
+
+  if (token) {
+    requestHeaders["Authorization"] = `Bearer ${token}`;
+  }
+
+  if (idempotencyKey) {
+    requestHeaders["Idempotency-Key"] = idempotencyKey;
+  }
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...rest,
+    headers: requestHeaders,
+  });
+
+  if (!response.ok) {
+    let errorData: { code?: string; message?: string } = {};
+    try {
+      errorData = await response.json();
+    } catch {
+      // Body not JSON
+    }
+    const message = errorData.message || `Error HTTP ${response.status}: ${response.statusText}`;
+    const err = new Error(message);
+    (err as any).statusCode = response.status;
+    (err as any).code = errorData.code;
+    throw err;
+  }
+
+  return response.json();
+}
+
+export const projectsApi = {
+  list: () => apiFetch<Project[]>("/projects"),
+  getById: (id: string) => apiFetch<Project>(`/projects/${id}`),
+  create: (data: { title: string; description: string; goalAmountCents: number }, token: string) =>
+    apiFetch<Project>("/projects", {
+      method: "POST",
+      body: JSON.stringify(data),
+      token,
+    }),
+  publish: (id: string, token: string) =>
+    apiFetch<Project>(`/projects/${id}/publish`, {
+      method: "PATCH",
+      token,
+    }),
+};
+
+export const donationsApi = {
+  create: (
+    data: { projectId: string; amountCents: number },
+    token: string,
+    idempotencyKey: string
+  ) =>
+    apiFetch<Donation>("/donations", {
+      method: "POST",
+      body: JSON.stringify(data),
+      token,
+      idempotencyKey,
+    }),
+  simulate: (id: string, action: "CONFIRMAR" | "RECHAZAR", token: string) =>
+    apiFetch<Donation>(`/donations/${id}/simulate`, {
+      method: "POST",
+      body: JSON.stringify({ action }),
+      token,
+    }),
+  getMyHistory: (token: string) =>
+    apiFetch<Donation[]>("/donations/me", {
+      token,
+    }),
+};

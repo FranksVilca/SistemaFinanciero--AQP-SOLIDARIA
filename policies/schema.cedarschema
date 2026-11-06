@@ -1,0 +1,55 @@
+namespace FundacionAQPSolidaria {
+  entity User in [Group];
+  entity Group;
+
+  entity Project {
+    status: String,
+  };
+
+  entity Donation {
+    donorSub: String,
+    projectId: String,
+  };
+
+  entity AuditEvent;
+
+  action ListProjects appliesTo {
+    principal: [User],
+    resource: [Project]
+  };
+
+  action ViewProject appliesTo {
+    principal: [User],
+    resource: [Project]
+  };
+
+  action CreateProject appliesTo {
+    principal: [User],
+    resource: [Project]
+  };
+
+  action PublishProject appliesTo {
+    principal: [User],
+    resource: [Project]
+  };
+
+  action CreateDonation appliesTo {
+    principal: [User],
+    resource: [Donation]
+  };
+
+  action SimulateDonation appliesTo {
+    principal: [User],
+    resource: [Donation]
+  };
+
+  action ViewDonation appliesTo {
+    principal: [User],
+    resource: [Donation]
+  };
+
+  action ViewAudit appliesTo {
+    principal: [User],
+    resource: [AuditEvent]
+  };
+}
