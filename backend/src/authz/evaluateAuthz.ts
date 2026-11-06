@@ -113,7 +113,8 @@ export function extractAuthClaims(event: {
         groups = [rawGroups];
       }
     } catch {
-      groups = rawGroups.replace(/[[\\]"]/g, "").split(",").map((g) => g.trim()).filter(Boolean);
+      // HTTP API flattens array claims to "[A B]"; also accept "[A, B]" and "A,B".
+      groups = rawGroups.replace(/[[\]"]/g, "").split(/[\s,]+/).filter(Boolean);
     }
   }
 

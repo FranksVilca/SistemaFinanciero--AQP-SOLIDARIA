@@ -12,7 +12,7 @@ Sistema cloud-native serverless de publicación de causas sociales y registro de
 
 - **Policy Enforcement Point (PEP)**: API Gateway HTTP API con JWT Authorizer nativo y validación de scopes OAuth + CloudFront con Content Security Policy (CSP) restrictiva.
 - **Policy Decision Point (PDP)**: Cómputo en AWS Lambda (Node.js 24) con roles IAM de mínimo privilegio por función; módulo `authz` embebido (RBAC + validación de ownership) y soporte para Amazon Verified Permissions con políticas Cedar (HU-12).
-- **Policy Administrator (PA)**: Amazon Cognito User Pool con Authorization Code Grant + PKCE, tokens de vida corta ($\le 15$ min) guardados en memoria y MFA TOTP obligatorio para `GESTOR` y `AUDITOR`.
+- **Policy Administrator (PA)**: dos Amazon Cognito User Pools con Authorization Code Grant + PKCE y tokens de vida corta ($\le 15$ min) guardados en memoria: un pool de donantes (`DONANTE`, MFA TOTP opcional) y un pool de staff (`GESTOR`, `AUDITOR`, MFA TOTP obligatorio, alta solo por administrador). Cada pool tiene su propio JWT Authorizer en API Gateway.
 - **Integridad e Idempotencia**: Amazon DynamoDB (On-Demand) con `TransactWriteItems` para reserva de clave de idempotencia (UUID) y control estricto de concurrencia (T08: 10 peticiones paralelas $\to$ 1 éxito, 9 conflictos).
 
 ---
@@ -85,11 +85,15 @@ sam deploy --guided \
 ```
 
 ### Paso 3: Construir y Publicar Frontend
-Copie las salidas de SAM (`ApiEndpoint`, `UserPoolId`, `UserPoolClientId`) a `frontend/.env`:
+Copie las salidas de SAM (`ApiEndpoint`, `UserPoolId`, `UserPoolClientId`, `StaffUserPoolId`, `StaffUserPoolClientId`, `HostedUiDomain`, `StaffHostedUiDomain`) a `frontend/.env`:
 ```env
 VITE_API_BASE_URL=https://<apiId>.execute-api.us-east-1.amazonaws.com/academic/v1
 VITE_COGNITO_AUTHORITY=https://cognito-idp.us-east-1.amazonaws.com/<userPoolId>
 VITE_COGNITO_CLIENT_ID=<userPoolClientId>
+VITE_COGNITO_DOMAIN=<HostedUiDomain>
+VITE_STAFF_COGNITO_AUTHORITY=https://cognito-idp.us-east-1.amazonaws.com/<staffUserPoolId>
+VITE_STAFF_COGNITO_CLIENT_ID=<staffUserPoolClientId>
+VITE_STAFF_COGNITO_DOMAIN=<StaffHostedUiDomain>
 ```
 
 Compile los activos estáticos y súbalos al bucket privado de S3:

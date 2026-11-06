@@ -34,3 +34,6 @@ Thumbs.db
 
 # Vitest
 .vitest/
+
+# Local agent tooling (machine-specific skill registry)
+.atl/

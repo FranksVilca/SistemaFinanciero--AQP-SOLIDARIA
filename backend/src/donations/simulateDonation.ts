@@ -118,7 +118,7 @@ export async function handler(event: {
         Update: {
           TableName: TABLE_NAMES.projects,
           Key: { projectId: donation.projectId },
-          UpdateExpression: "ADD confirmedAmountCents :amount, updatedAt = :now",
+          UpdateExpression: "SET updatedAt = :now ADD confirmedAmountCents :amount",
           ConditionExpression: "attribute_exists(projectId)",
           ExpressionAttributeValues: {
             ":amount": donation.amountCents,

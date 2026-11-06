@@ -15,7 +15,7 @@ Parameters:
   CognitoDomainPrefix:
     Type: String
     Default: aqp-solidaria-auth
-    Description: Prefijo para el dominio de Cognito Hosted UI.
+    Description: Prefijo para los dominios de Cognito Hosted UI (se completa con stage, realm y cuenta para ser único).
 
 Conditions:
   IsAcademicStage: !Equals [!Ref StageName, 'academic']
@@ -121,7 +121,7 @@ Resources:
           KeyType: RANGE
 
   # ============================================================================
-  # IDENTIDAD: Amazon Cognito User Pool + PKCE + TOTP MFA
+  # IDENTIDAD DONANTES: Cognito User Pool + PKCE + TOTP MFA opcional (CA-11.1)
   # ============================================================================
   CognitoUserPool:
     Type: AWS::Cognito::UserPool
@@ -149,20 +149,6 @@ Resources:
       UserPoolId: !Ref CognitoUserPool
       Description: Grupo para donantes autenticados
 
-  CognitoGroupGestor:
-    Type: AWS::Cognito::UserPoolGroup
-    Properties:
-      GroupName: GESTOR
-      UserPoolId: !Ref CognitoUserPool
-      Description: Grupo para gestores de proyectos (MFA TOTP obligatorio)
-
-  CognitoGroupAuditor:
-    Type: AWS::Cognito::UserPoolGroup
-    Properties:
-      GroupName: AUDITOR
-      UserPoolId: !Ref CognitoUserPool
-      Description: Grupo para auditores de seguridad (MFA TOTP obligatorio)
-
   CognitoResourceServer:
     Type: AWS::Cognito::UserPoolResourceServer
     Properties:
@@ -170,17 +156,14 @@ Resources:
       Name: AQP Solidaria API Scopes
       UserPoolId: !Ref CognitoUserPool
       Scopes:
-        - ScopeName: projects.write
-          ScopeDescription: Permiso para crear y publicar proyectos
         - ScopeName: donations.write
           ScopeDescription: Permiso para registrar y simular donaciones
         - ScopeName: donations.read
           ScopeDescription: Permiso para consultar donaciones propias
-        - ScopeName: audit.read
-          ScopeDescription: Permiso para consultar registros de auditoría
 
   CognitoUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
+    DependsOn: CognitoResourceServer
     Properties:
       ClientName: !Sub "aqp-solidaria-spa-${StageName}"
       UserPoolId: !Ref CognitoUserPool
@@ -194,6 +177,96 @@ Resources:
         AccessToken: minutes
         IdToken: minutes
         RefreshToken: days
+      SupportedIdentityProviders:
+        - COGNITO
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - openid
+        - profile
+        - email
+        - api/donations.write
+        - api/donations.read
+      CallbackURLs:
+        - http://localhost:3000/auth/callback
+      LogoutURLs:
+        - http://localhost:3000
+
+  CognitoUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Domain: !Sub "${CognitoDomainPrefix}-${StageName}-${AWS::AccountId}"
+
+  # ============================================================================
+  # IDENTIDAD STAFF (GESTOR, AUDITOR): User Pool separado con MFA TOTP obligatorio (CA-11.1)
+  # ============================================================================
+  StaffUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "aqp-solidaria-staff-${StageName}"
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      MfaConfiguration: "ON"
+      EnabledMfas:
+        - SOFTWARE_TOKEN_MFA
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+
+  StaffGroupGestor:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: GESTOR
+      UserPoolId: !Ref StaffUserPool
+      Description: Grupo para gestores de proyectos (MFA TOTP obligatorio)
+
+  StaffGroupAuditor:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: AUDITOR
+      UserPoolId: !Ref StaffUserPool
+      Description: Grupo para auditores de seguridad (MFA TOTP obligatorio)
+
+  StaffResourceServer:
+    Type: AWS::Cognito::UserPoolResourceServer
+    Properties:
+      Identifier: api
+      Name: AQP Solidaria Staff API Scopes
+      UserPoolId: !Ref StaffUserPool
+      Scopes:
+        - ScopeName: projects.write
+          ScopeDescription: Permiso para crear y publicar proyectos
+        - ScopeName: audit.read
+          ScopeDescription: Permiso para consultar registros de auditoría
+
+  StaffUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn: StaffResourceServer
+    Properties:
+      ClientName: !Sub "aqp-solidaria-staff-spa-${StageName}"
+      UserPoolId: !Ref StaffUserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      AccessTokenValidity: 15
+      IdTokenValidity: 15
+      RefreshTokenValidity: 7
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+      SupportedIdentityProviders:
+        - COGNITO
       AllowedOAuthFlowsUserPoolClient: true
       AllowedOAuthFlows:
         - code
@@ -202,13 +275,17 @@ Resources:
         - profile
         - email
         - api/projects.write
-        - api/donations.write
-        - api/donations.read
         - api/audit.read
       CallbackURLs:
-        - http://localhost:3000/auth/callback
+        - http://localhost:3000/auth/staff/callback
       LogoutURLs:
         - http://localhost:3000
+
+  StaffUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref StaffUserPool
+      Domain: !Sub "${CognitoDomainPrefix}-staff-${StageName}-${AWS::AccountId}"
 
   # ============================================================================
   # API GATEWAY: HTTP API con JWT Authorizer (PEP Zero Trust)
@@ -238,6 +315,12 @@ Resources:
               Issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}"
               Audience:
                 - !Ref CognitoUserPoolClient
+          StaffJwtAuthorizer:
+            IdentitySource: "$request.header.Authorization"
+            JwtConfiguration:
+              Issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${StaffUserPool}"
+              Audience:
+                - !Ref StaffUserPoolClient
 
   # ============================================================================
   # LAMBDA FUNCTIONS (Módulo Projects)
@@ -314,6 +397,7 @@ Resources:
             Method: POST
             ApiId: !Ref HttpApi
             Auth:
+              Authorizer: StaffJwtAuthorizer
               AuthorizationScopes:
                 - api/projects.write
 
@@ -335,6 +419,7 @@ Resources:
             Method: PATCH
             ApiId: !Ref HttpApi
             Auth:
+              Authorizer: StaffJwtAuthorizer
               AuthorizationScopes:
                 - api/projects.write
 
@@ -363,6 +448,7 @@ Resources:
             Method: POST
             ApiId: !Ref HttpApi
             Auth:
+              Authorizer: CognitoJwtAuthorizer
               AuthorizationScopes:
                 - api/donations.write
 
@@ -387,6 +473,7 @@ Resources:
             Method: POST
             ApiId: !Ref HttpApi
             Auth:
+              Authorizer: CognitoJwtAuthorizer
               AuthorizationScopes:
                 - api/donations.write
 
@@ -406,6 +493,7 @@ Resources:
             Method: GET
             ApiId: !Ref HttpApi
             Auth:
+              Authorizer: CognitoJwtAuthorizer
               AuthorizationScopes:
                 - api/donations.read
 
@@ -428,6 +516,7 @@ Resources:
             Method: GET
             ApiId: !Ref HttpApi
             Auth:
+              Authorizer: StaffJwtAuthorizer
               AuthorizationScopes:
                 - api/audit.read
 
@@ -460,7 +549,7 @@ Resources:
         Name: !Sub "aqp-security-headers-${StageName}"
         SecurityHeadersConfig:
           ContentSecurityPolicy:
-            ContentSecurityPolicy: "default-src 'self'; connect-src 'self' https://*.amazonaws.com; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none';"
+            ContentSecurityPolicy: "default-src 'self'; connect-src 'self' https://*.amazonaws.com https://*.amazoncognito.com; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none';"
             Override: true
           StrictTransportSecurity:
             AccessControlMaxAgeSec: 31536000
@@ -515,8 +604,20 @@ Outputs:
     Description: HTTP API endpoint URL
     Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"
   UserPoolId:
-    Description: ID del User Pool de Cognito
+    Description: ID del User Pool de Cognito para donantes
     Value: !Ref CognitoUserPool
   UserPoolClientId:
-    Description: ID del cliente SPA de Cognito
+    Description: ID del cliente SPA de Cognito para donantes
     Value: !Ref CognitoUserPoolClient
+  StaffUserPoolId:
+    Description: ID del User Pool de Cognito para staff (GESTOR, AUDITOR) con MFA TOTP obligatorio
+    Value: !Ref StaffUserPool
+  StaffUserPoolClientId:
+    Description: ID del cliente SPA de Cognito para staff
+    Value: !Ref StaffUserPoolClient
+  HostedUiDomain:
+    Description: URL base de Cognito Hosted UI para donantes (endpoints /oauth2/* y /logout)
+    Value: !Sub "https://${CognitoUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com"
+  StaffHostedUiDomain:
+    Description: URL base de Cognito Hosted UI para staff (endpoints /oauth2/* y /logout)
+    Value: !Sub "https://${StaffUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com"

@@ -1,13 +1,13 @@
 import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { handleOidcCallback } from "../auth/authService.js";
+import { handleOidcCallback, AuthRealm } from "../auth/authService.js";
 import { Loader2 } from "lucide-react";
 
-export const AuthCallbackPage: React.FC = () => {
+export const AuthCallbackPage: React.FC<{ realm?: AuthRealm }> = ({ realm = "donor" }) => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    handleOidcCallback()
+    handleOidcCallback(realm)
       .then(() => {
         navigate("/", { replace: true });
       })
@@ -15,7 +15,7 @@ export const AuthCallbackPage: React.FC = () => {
         console.error("Error en autenticación OIDC:", err);
         navigate("/", { replace: true });
       });
-  }, [navigate]);
+  }, [navigate, realm]);
 
   return (
     <div className="min-h-[60vh] flex flex-col items-center justify-center p-4">

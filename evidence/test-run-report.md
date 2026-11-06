@@ -14,7 +14,7 @@
 
  ✓ test/projects.test.ts (4 tests)
  ✓ test/authz.test.ts (6 tests)
- ✓ test/mfa.test.ts (1 test)
+ ✓ test/mfa.test.ts (9 tests)
  ✓ test/projectManagement.test.ts (6 tests)
  ✓ test/donationValidation.test.ts (4 tests)
  ✓ test/idempotency.test.ts (3 tests)
@@ -47,7 +47,7 @@
 | **T11** | Uso de ID token o token alterado en lugar de access token | **PASS** (HTTP 401/403 por authorizer scopes) | `test/authz.test.ts` $\to$ CA-03.2, CA-NF02.1 |
 | **T12** | Gestor consulta historial privado de un donante | **PASS** (HTTP 403 ForbiddenError) | `test/bola.test.ts` $\to$ CA-04.2 |
 | **T13** | Token revocado usado antes de expirar | **PASS** (Aceptado localmente hasta TTL $\le 15$ min; limitación Zero Trust documentada) | `docs/threat-model.md` $\to$ CA-03.4 |
-| **T14** | Usuario GESTOR/AUDITOR inicia sesión sin 2do factor | **PASS** (Desafío `SOFTWARE_TOKEN_MFA` exigido; sin emisión de tokens) | `test/mfa.test.ts` $\to$ CA-11.2 |
+| **T14** | Usuario GESTOR/AUDITOR inicia sesión sin 2do factor | **PASS (validación estática de IaC)**: `test/mfa.test.ts` analiza `infra/template.yaml` y verifica que `StaffUserPool` tiene `MfaConfiguration: ON` solo con `SOFTWARE_TOKEN_MFA`, que `GESTOR`/`AUDITOR` pertenecen a ese pool, que sus rutas usan `StaffJwtAuthorizer` y que no existe MFA por SMS. **Pendiente**: evidencia en despliegue de que un GESTOR no obtiene tokens sin TOTP. | `test/mfa.test.ts` $\to$ CA-11.1 (CA-11.2 requiere verificación en AWS) |
 
 ---
 

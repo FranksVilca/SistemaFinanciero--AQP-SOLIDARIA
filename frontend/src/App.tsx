@@ -34,6 +34,7 @@ export const App: React.FC = () => {
                 <Route path="/manager" element={<ManagerDashboardPage />} />
                 <Route path="/auditor" element={<AuditorPage />} />
                 <Route path="/auth/callback" element={<AuthCallbackPage />} />
+                <Route path="/auth/staff/callback" element={<AuthCallbackPage realm="staff" />} />
               </Routes>
             </main>
             <footer className="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500">

@@ -137,4 +137,35 @@ describe("User Story 5 - Donation State Transitions (HU-06, CA-06.1, CA-06.2)", 
     const response = await simulateDonationHandler(event as any);
     expect(response.statusCode).toBe(409);
   });
+
+  it("CONFIRMAR increments the project with a syntactically valid UpdateExpression", async () => {
+    (docClient.send as any).mockResolvedValueOnce({
+      Item: { donationId, projectId, donorSub, amountCents: 5000, currency: "PEN", status: "PENDIENTE_SIMULACION" },
+    });
+    (docClient.send as any).mockResolvedValueOnce({});
+
+    const event = {
+      pathParameters: { donationId },
+      body: JSON.stringify({ action: "CONFIRMAR" }),
+      requestContext: {
+        requestId: "req-sim-expr",
+        authorizer: { jwt: { claims: { sub: donorSub, "cognito:groups": '["DONANTE"]' } } },
+      },
+    };
+
+    await simulateDonationHandler(event as any);
+
+    const tx = (docClient.send as any).mock.calls[1][0].input;
+    const projectUpdate = tx.TransactItems.find(
+      (item: any) => item.Update?.TableName === "aqp-projects-test"
+    ).Update;
+    // DynamoDB clauses: each keyword at most once; ADD takes "path value" pairs, never "path = value".
+    const clauses = projectUpdate.UpdateExpression.split(/\b(?=SET|ADD|REMOVE|DELETE)\b/).map((c: string) => c.trim());
+    const keywords = clauses.map((c: string) => c.split(" ")[0]);
+    expect(new Set(keywords).size).toBe(keywords.length);
+    const addClause = clauses.find((c: string) => c.startsWith("ADD"));
+    expect(addClause).toBe("ADD confirmedAmountCents :amount");
+    expect(clauses).toContain("SET updatedAt = :now");
+  });
 });
+
