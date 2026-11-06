@@ -39,16 +39,20 @@ export interface LogoutQueue {
 // Only an exact configured Hosted UI origin with the /logout path may be followed,
 // so a tampered queue can never turn the continuation route into an open redirect.
 function isHostedUiLogoutUrl(candidate: string, realms: HostedUiRealm[]): boolean {
-  let url: URL;
-  try {
-    url = new URL(candidate);
-  } catch {
-    return false;
-  }
+  const url = parseUrl(candidate);
   return (
-    url.pathname === "/logout" &&
-    realms.some(({ hostedUiDomain }) => hostedUiDomain && new URL(hostedUiDomain).origin === url.origin)
+    url?.pathname === "/logout" &&
+    realms.some(({ hostedUiDomain }) => parseUrl(hostedUiDomain)?.origin === url.origin)
   );
+}
+
+// A misconfigured domain (e.g. missing scheme) must exclude its realm, not abort the logout chain.
+function parseUrl(value: string): URL | undefined {
+  try {
+    return new URL(value);
+  } catch {
+    return undefined;
+  }
 }
 
 export function takeNextLogoutHop(

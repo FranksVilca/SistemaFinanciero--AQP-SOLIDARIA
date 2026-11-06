@@ -84,6 +84,13 @@ describe("Logout queue continuation", () => {
     expect(takeNextLogoutHop(stale, now, realms)).toEqual({});
   });
 
+  it("skips a realm whose configured Hosted UI domain is malformed instead of throwing", () => {
+    const misconfigured = [{ ...donor, hostedUiDomain: "donor.auth.us-east-1.amazoncognito.com" }, staff];
+    const queue = { createdAt: now, urls: [donorUrl, staffUrl] };
+    expect(() => takeNextLogoutHop(queue, now, misconfigured)).not.toThrow();
+    expect(takeNextLogoutHop(queue, now, misconfigured)).toEqual({ next: staffUrl });
+  });
+
   it("ignores malformed queue payloads", () => {
     expect(takeNextLogoutHop({ urls: [donorUrl] }, now, realms)).toEqual({});
     expect(takeNextLogoutHop({ createdAt: now, urls: "nope" }, now, realms)).toEqual({});
