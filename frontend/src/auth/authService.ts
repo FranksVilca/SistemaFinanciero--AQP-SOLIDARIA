@@ -1,7 +1,8 @@
 import { UserManager, WebStorageStateStore, InMemoryWebStorage, User } from "oidc-client-ts";
 import {
   buildHostedUiLogoutUrls,
-  realmsMissingHostedUiDomain,
+  hostedUiOrigin,
+  realmsWithoutValidHostedUiDomain,
   takeNextLogoutHop,
   type LogoutQueue,
 } from "./logoutChain.js";
@@ -79,18 +80,19 @@ export async function logoutWithOidc(): Promise<void> {
   // A fresh logout never resumes leftovers from an earlier, abandoned one.
   saveLogoutQueue(null);
 
-  for (const realm of realmsMissingHostedUiDomain(hostedUiRealms)) {
+  for (const realm of realmsWithoutValidHostedUiDomain(hostedUiRealms)) {
     console.warn(
-      `Hosted UI domain not configured for ${realm} realm: refresh token not revoked and Hosted UI session not ended`
+      `Hosted UI domain missing or not an https URL for ${realm} realm: refresh token not revoked and Hosted UI session not ended`
     );
   }
 
   for (const realm of realms) {
-    const { hostedUiDomain, clientId } = realmConfigs[realm];
+    const { clientId } = realmConfigs[realm];
+    const hostedUi = hostedUiOrigin(realmConfigs[realm].hostedUiDomain);
     try {
       const user = await userManagers[realm].getUser();
-      if (user?.refresh_token && hostedUiDomain) {
-        const response = await fetch(`${hostedUiDomain}/oauth2/revoke`, {
+      if (user?.refresh_token && hostedUi) {
+        const response = await fetch(`${hostedUi}/oauth2/revoke`, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({ token: user.refresh_token, client_id: clientId }),

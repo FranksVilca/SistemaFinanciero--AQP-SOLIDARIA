@@ -3,7 +3,8 @@ import {
   LOGOUT_CONTINUE_PATH,
   LOGOUT_QUEUE_TTL_MS,
   buildHostedUiLogoutUrls,
-  realmsMissingHostedUiDomain,
+  hostedUiOrigin,
+  realmsWithoutValidHostedUiDomain,
   takeNextLogoutHop,
   type HostedUiRealm,
 } from "../src/auth/logoutChain.js";
@@ -44,8 +45,20 @@ describe("Hosted UI logout chain", () => {
   });
 
   it("reports realms without a Hosted UI domain so logout can warn instead of failing silently", () => {
-    expect(realmsMissingHostedUiDomain([donor, staff])).toEqual([]);
-    expect(realmsMissingHostedUiDomain([{ ...donor, hostedUiDomain: "" }, staff])).toEqual(["donor"]);
+    expect(realmsWithoutValidHostedUiDomain([donor, staff])).toEqual([]);
+    expect(realmsWithoutValidHostedUiDomain([{ ...donor, hostedUiDomain: "" }, staff])).toEqual(["donor"]);
+  });
+
+  it.each([
+    ["missing scheme", "donor.auth.us-east-1.amazoncognito.com"],
+    ["plain http", "http://donor.auth.us-east-1.amazoncognito.com"],
+    ["opaque origin", "localhost:3000"],
+  ])("treats a Hosted UI domain with %s as invalid: warned, never used for redirects", (_label, hostedUiDomain) => {
+    const realms = [{ ...donor, hostedUiDomain }, staff];
+    expect(realmsWithoutValidHostedUiDomain(realms)).toEqual(["donor"]);
+    const urls = buildHostedUiLogoutUrls(realms, origin);
+    expect(urls).toHaveLength(1);
+    expect(new URL(urls[0]).searchParams.get("client_id")).toBe("staff-client");
   });
 });
 
@@ -89,6 +102,19 @@ describe("Logout queue continuation", () => {
     const queue = { createdAt: now, urls: [donorUrl, staffUrl] };
     expect(() => takeNextLogoutHop(queue, now, misconfigured)).not.toThrow();
     expect(takeNextLogoutHop(queue, now, misconfigured)).toEqual({ next: staffUrl });
+  });
+
+  it("exposes only https Hosted UI origins for token revocation", () => {
+    expect(hostedUiOrigin("https://donor.auth.us-east-1.amazoncognito.com")).toBe(
+      "https://donor.auth.us-east-1.amazoncognito.com"
+    );
+    expect(hostedUiOrigin("donor.auth.us-east-1.amazoncognito.com")).toBeUndefined();
+    expect(hostedUiOrigin("")).toBeUndefined();
+  });
+
+  it("never matches opaque-origin queue entries against an opaque-origin domain", () => {
+    const opaque = [{ ...donor, hostedUiDomain: "localhost:3000" }];
+    expect(takeNextLogoutHop({ createdAt: now, urls: ["foo:/logout"] }, now, opaque)).toEqual({});
   });
 
   it("ignores malformed queue payloads", () => {

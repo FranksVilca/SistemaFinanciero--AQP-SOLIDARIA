@@ -13,19 +13,24 @@ export const LOGOUT_CONTINUE_PATH = "/auth/logout/continue";
 // One /logout URL per configured realm. Each Hosted UI session has its own cookie,
 // so every realm must be visited; redirecting only to the last one leaves the others alive.
 export function buildHostedUiLogoutUrls(realms: HostedUiRealm[], origin: string): string[] {
-  return realms
-    .filter(({ hostedUiDomain }) => hostedUiDomain)
-    .map(
-      ({ hostedUiDomain, clientId }) =>
-        `${hostedUiDomain}/logout?${new URLSearchParams({
-          client_id: clientId,
-          logout_uri: `${origin}${LOGOUT_CONTINUE_PATH}`,
-        })}`
-    );
+  return realms.flatMap(({ hostedUiDomain, clientId }) => {
+    const hostedUi = hostedUiOrigin(hostedUiDomain);
+    if (!hostedUi) return [];
+    const params = new URLSearchParams({ client_id: clientId, logout_uri: `${origin}${LOGOUT_CONTINUE_PATH}` });
+    return [`${hostedUi}/logout?${params}`];
+  });
 }
 
-export function realmsMissingHostedUiDomain(realms: HostedUiRealm[]): string[] {
-  return realms.filter(({ hostedUiDomain }) => !hostedUiDomain).map(({ realm }) => realm);
+// Realms whose Hosted UI domain is empty or invalid; logout cannot end their sessions.
+export function realmsWithoutValidHostedUiDomain(realms: HostedUiRealm[]): string[] {
+  return realms.filter(({ hostedUiDomain }) => !hostedUiOrigin(hostedUiDomain)).map(({ realm }) => realm);
+}
+
+// A Hosted UI domain is usable only as an absolute https URL. Anything else (missing scheme,
+// plain http, opaque "null" origin) is excluded instead of being followed or aborting logout.
+export function hostedUiOrigin(hostedUiDomain: string): string | undefined {
+  const url = parseUrl(hostedUiDomain);
+  return url?.protocol === "https:" ? url.origin : undefined;
 }
 
 // A logout chain abandoned midway (closed tab, Cognito error page) must not replay later.
@@ -41,12 +46,13 @@ export interface LogoutQueue {
 function isHostedUiLogoutUrl(candidate: string, realms: HostedUiRealm[]): boolean {
   const url = parseUrl(candidate);
   return (
-    url?.pathname === "/logout" &&
-    realms.some(({ hostedUiDomain }) => parseUrl(hostedUiDomain)?.origin === url.origin)
+    url?.protocol === "https:" &&
+    url.pathname === "/logout" &&
+    realms.some(({ hostedUiDomain }) => hostedUiOrigin(hostedUiDomain) === url.origin)
   );
 }
 
-// A misconfigured domain (e.g. missing scheme) must exclude its realm, not abort the logout chain.
+// Returns undefined instead of throwing for unparsable input.
 function parseUrl(value: string): URL | undefined {
   try {
     return new URL(value);
