@@ -6,11 +6,10 @@ export interface ApiResponse {
   body: string;
 }
 
+// CORS headers are not set here: the HTTP API CorsConfiguration (infra/template.yaml)
+// restricts allowed origins and API Gateway overrides any CORS header sent by the integration.
 const DEFAULT_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type,Authorization,Idempotency-Key",
-  "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
 };
 
 export function buildSuccessResponse<T>(
@@ -38,9 +37,9 @@ export function buildErrorResponse(
     statusCode = error.statusCode;
     code = error.code;
     message = error.message;
-  } else if (error instanceof Error) {
-    message = error.message;
   }
+  // Any other error (e.g. AWS SDK) keeps the generic message: its details may expose
+  // table names or expressions. Handlers log the full error with logError before calling this.
 
   return {
     statusCode,

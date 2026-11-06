@@ -119,6 +119,8 @@ Resources:
           KeyType: HASH
         - AttributeName: timestamp#eventId
           KeyType: RANGE
+      # Registro de auditoría inmutable: la tabla no puede eliminarse sin desactivar antes la protección.
+      DeletionProtectionEnabled: true
 
   # ============================================================================
   # IDENTIDAD DONANTES: Cognito User Pool + PKCE + TOTP MFA opcional (CA-11.1)
@@ -303,8 +305,10 @@ Resources:
     Properties:
       StageName: !Ref StageName
       CorsConfiguration:
+        # Solo el origen de la SPA (CloudFront) y el entorno local de desarrollo.
         AllowOrigins:
-          - "*"
+          - !Sub "https://${CloudFrontDistribution.DomainName}"
+          - http://localhost:3000
         AllowHeaders:
           - Content-Type
           - Authorization
@@ -395,8 +399,11 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ProjectsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref AuditTable
+        # Auditoría append-only: solo PutItem (sin Update/Delete).
+        - Statement:
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AuditTable.Arn
       Events:
         ProtectedPost:
           Type: HttpApi
@@ -417,8 +424,11 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ProjectsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref AuditTable
+        # Auditoría append-only: solo PutItem (sin Update/Delete).
+        - Statement:
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AuditTable.Arn
       Events:
         ProtectedPatch:
           Type: HttpApi
@@ -446,8 +456,6 @@ Resources:
             TableName: !Ref DonationsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref IdempotencyTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref AuditTable
       Events:
         ProtectedPost:
           Type: HttpApi
@@ -471,8 +479,6 @@ Resources:
             TableName: !Ref ProjectsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref DonationsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref AuditTable
       Events:
         ProtectedPost:
           Type: HttpApi
@@ -514,8 +520,11 @@ Resources:
       CodeUri: ../backend/dist/
       Handler: audit/getAuditEvents.handler
       Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref AuditTable
+        # El auditor solo consulta (Query); no lee otras tablas ni modifica eventos.
+        - Statement:
+            - Effect: Allow
+              Action: dynamodb:Query
+              Resource: !GetAtt AuditTable.Arn
       Events:
         ProtectedGet:
           Type: HttpApi

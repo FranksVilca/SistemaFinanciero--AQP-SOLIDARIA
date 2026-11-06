@@ -199,3 +199,74 @@ describe("Cognito Hosted UI domains (CA-03.1)", () => {
     expect(connectSrc).toContain("https://*.amazoncognito.com");
   });
 });
+
+describe("HTTP API CORS is restricted to known origins", () => {
+  const allowOrigins = () =>
+    (resources.HttpApi.Properties?.CorsConfiguration as { AllowOrigins: unknown[] }).AllowOrigins;
+
+  it("does not allow the wildcard origin", () => {
+    expect(allowOrigins()).not.toContain("*");
+    expect(allowOrigins().map((o) => JSON.stringify(o)).some((o) => o.includes("*"))).toBe(false);
+  });
+
+  it("allows the CloudFront origin and localhost for local development only", () => {
+    expect(allowOrigins().map((o) => JSON.stringify(o))).toEqual(
+      expect.arrayContaining([JSON.stringify({ "Fn::Sub": "https://${CloudFrontDistribution.DomainName}" })])
+    );
+    expect(allowOrigins()).toContain("http://localhost:3000");
+    expect(allowOrigins()).toHaveLength(2);
+  });
+});
+
+describe("Audit trail is append-only (CA-08.3 / CA-10.2)", () => {
+  type Statement = { Effect: string; Action: string | string[]; Resource: unknown };
+  const AUDIT_WRITERS = ["CreateProjectFunction", "PublishProjectFunction"];
+  const AUDIT_READER = "GetAuditEventsFunction";
+  const functions = ofType("AWS::Serverless::Function");
+
+  const policiesOf = (fn: string) => (resources[fn].Properties?.Policies ?? []) as Record<string, unknown>[];
+  const touchesAudit = (value: unknown) => JSON.stringify(value).includes('"AuditTable');
+  const auditActions = (fn: string): string[] =>
+    policiesOf(fn)
+      .flatMap((policy) => (policy.Statement ?? []) as Statement[])
+      .filter((statement) => touchesAudit(statement.Resource))
+      .flatMap((statement) => [statement.Action].flat());
+
+  it("no function uses a SAM policy template (CRUD/Write/Read) on the audit table", () => {
+    for (const [name] of functions) {
+      const templates = policiesOf(name).filter((policy) => !("Statement" in policy));
+      expect(templates.filter(touchesAudit), name).toEqual([]);
+    }
+  });
+
+  it("writers can only PutItem on the audit table", () => {
+    for (const fn of AUDIT_WRITERS) {
+      expect(auditActions(fn), fn).toEqual(["dynamodb:PutItem"]);
+    }
+  });
+
+  it("the audit reader can only Query the audit table", () => {
+    expect(auditActions(AUDIT_READER)).toEqual(["dynamodb:Query"]);
+  });
+
+  it("no function can update or delete audit events", () => {
+    for (const [name] of functions) {
+      const actions = auditActions(name).join(",");
+      expect(actions, name).not.toMatch(/Update|Delete|BatchWrite|\*/);
+      const writeTemplates = policiesOf(name)
+        .filter((policy) => !("Statement" in policy) && touchesAudit(policy))
+        .filter((policy) => Object.keys(policy).some((key) => /Crud|Write/.test(key)));
+      expect(writeTemplates, name).toEqual([]);
+    }
+  });
+
+  it("functions that do not read or write audit events get no audit permission", () => {
+    for (const [name] of functions.filter(([fn]) => ![...AUDIT_WRITERS, AUDIT_READER].includes(fn))) {
+      expect(touchesAudit(policiesOf(name)), name).toBe(false);
+    }
+  });
+
+  it("the audit table is protected against deletion", () => {
+    expect(resources.AuditTable.Properties?.DeletionProtectionEnabled).toBe(true);
+  });
+});

@@ -28,6 +28,20 @@ import { handler as createProjectHandler } from "../src/projects/createProject.j
 import { handler as publishProjectHandler } from "../src/projects/publishProject.js";
 import { handler as getProjectStatsHandler } from "../src/projects/getProjectStats.js";
 
+const auditPut = () =>
+  (docClient.send as any).mock.calls
+    .map(([command]: [{ input: Record<string, any> }]) => command.input)
+    .find((input: Record<string, any>) => input.TableName === "aqp-audit-test");
+
+const expectAppendOnlyPseudonymizedAudit = (rawSub: string, action: string) => {
+  const input = auditPut();
+  expect(input).toBeDefined();
+  expect(input.ConditionExpression).toMatch(/attribute_not_exists\(/);
+  expect(input.Item.action).toBe(action);
+  expect(input.Item.actorRef).toMatch(/^usr_[0-9a-f]{12}$/);
+  expect(JSON.stringify(input.Item)).not.toContain(rawSub);
+};
+
 describe("User Story 3 - Project Lifecycle Management (HU-08, HU-09, T03)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -88,6 +102,7 @@ describe("User Story 3 - Project Lifecycle Management (HU-08, HU-09, T03)", () =
       expect(body.status).toBe("BORRADOR");
       expect(body.confirmedAmountCents).toBe(0);
       expect(body.currency).toBe("PEN");
+      expectAppendOnlyPseudonymizedAudit("gestor-user-1", "CREATE_PROJECT");
     });
 
     it("should return HTTP 400 when body fails Zod schema validation", async () => {
@@ -145,6 +160,7 @@ describe("User Story 3 - Project Lifecycle Management (HU-08, HU-09, T03)", () =
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
       expect(body.status).toBe("PUBLICADO");
+      expectAppendOnlyPseudonymizedAudit("gestor-user-1", "PUBLISH_PROJECT");
     });
 
     it("should return HTTP 409 Conflict if project is already published or conditional check fails", async () => {

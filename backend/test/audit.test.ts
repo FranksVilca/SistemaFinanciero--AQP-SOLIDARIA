@@ -50,6 +50,25 @@ describe("User Story 7 - Audit Log Querying (HU-10)", () => {
     expect(commandArg.input.Item.secret).toBeUndefined();
   });
 
+  it("writes append-only events that cannot overwrite an existing one, with a pseudonymized actor", async () => {
+    (docClient.send as any).mockResolvedValueOnce({});
+
+    await logAuditEvent({
+      eventType: "PROJECT_LIFECYCLE",
+      requestId: "req-append-only",
+      actorSub: "user-12345",
+      resourceRef: "project:proj-1",
+      action: "PUBLISH_PROJECT",
+      outcome: "SUCCESS",
+    });
+
+    const { input } = (docClient.send as any).mock.calls[0][0];
+    expect(input.TableName).toBe("aqp-audit-test");
+    expect(input.ConditionExpression).toBe("attribute_not_exists(eventType)");
+    expect(input.Item.actorRef).toMatch(/^usr_[0-9a-f]{12}$/);
+    expect(JSON.stringify(input.Item)).not.toContain("user-12345");
+  });
+
   it("should allow AUDITOR group with verified MFA to query audit events", async () => {
     const mockEvents = [
       {
