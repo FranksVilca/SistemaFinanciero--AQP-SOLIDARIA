@@ -6,9 +6,19 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
+
+    services:
+      # DynamoDB Local for the integration tests (T08 concurrency, T06/T07 idempotency, T09 ownership).
+      dynamodb-local:
+        image: amazon/dynamodb-local
+        ports:
+          - 8000:8000
 
     steps:
       - name: Checkout repository
@@ -31,3 +41,8 @@ jobs:
 
       - name: Run backend tests
         run: npm run test
+
+      - name: Run integration tests (DynamoDB Local)
+        run: npm run test:integration
+        env:
+          DYNAMODB_ENDPOINT: http://localhost:8000

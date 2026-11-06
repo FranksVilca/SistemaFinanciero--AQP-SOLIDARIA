@@ -13,7 +13,8 @@ Sistema cloud-native serverless de publicación de causas sociales y registro de
 - **Policy Enforcement Point (PEP)**: API Gateway HTTP API con JWT Authorizer nativo y validación de scopes OAuth + CloudFront con Content Security Policy (CSP) restrictiva.
 - **Policy Decision Point (PDP)**: Cómputo en AWS Lambda (Node.js 24) con roles IAM de mínimo privilegio por función; módulo `authz` embebido (RBAC + validación de ownership) y soporte para Amazon Verified Permissions con políticas Cedar (HU-12).
 - **Policy Administrator (PA)**: dos Amazon Cognito User Pools con Authorization Code Grant + PKCE y tokens de vida corta ($\le 15$ min) guardados en memoria: un pool de donantes (`DONANTE`, MFA TOTP opcional) y un pool de staff (`GESTOR`, `AUDITOR`, MFA TOTP obligatorio, alta solo por administrador). Cada pool tiene su propio JWT Authorizer en API Gateway.
-- **Integridad e Idempotencia**: Amazon DynamoDB (On-Demand) con `TransactWriteItems` para reserva de clave de idempotencia (UUID) y control estricto de concurrencia (T08: 10 peticiones paralelas $\to$ 1 éxito, 9 conflictos).
+- **Integridad e Idempotencia**: Amazon DynamoDB (On-Demand) con `TransactWriteItems` para reserva de clave de idempotencia (UUID) y control estricto de concurrencia (T08: 10 peticiones paralelas $\to$ 1 éxito, 9 conflictos, verificado contra DynamoDB Local en `backend/test/integration/`).
+- **Limitación conocida (T13, CA-03.4)**: el JWT Authorizer de API Gateway valida firma, emisor, audiencia y expiración, pero **no consulta la revocación** de Cognito. Un access token revocado (logout o `RevokeToken`) sigue siendo aceptado por el API hasta que expira; la exposición queda acotada a $\le 15$ minutos por `AccessTokenValidity`. La revocación sí invalida el refresh token, por lo que no se emiten tokens nuevos. El procedimiento de verificación tras el despliegue está en `docs/threat-model.md` (sección 4).
 
 ---
 
@@ -61,9 +62,23 @@ npm run typecheck
 # Validar estilo y linting con ESLint
 npm run lint
 
-# Ejecutar suite de pruebas unitarias y de integración (Vitest)
+# Ejecutar la suite unitaria (Vitest, DynamoDB simulado con mocks)
 npm run test
 ```
+
+### Pruebas de integración contra DynamoDB Local
+Las pruebas de `backend/test/integration/` (T08 concurrencia, T06/T07 idempotencia, T09 propiedad) ejecutan los handlers reales contra DynamoDB Local, con tablas creadas a partir de los esquemas de clave de `infra/template.yaml`. Requieren Docker. Sin `DYNAMODB_ENDPOINT` se omiten con un mensaje explícito.
+```bash
+# Levantar DynamoDB Local (docker run --rm -d --name aqp-dynamodb-local -p 8000:8000 amazon/dynamodb-local)
+npm run dynamodb:local
+
+# Ejecutar las pruebas de integración
+DYNAMODB_ENDPOINT=http://localhost:8000 npm run test:integration
+
+# Detener el contenedor
+npm run dynamodb:local:stop
+```
+En CI, el job `validate` levanta `amazon/dynamodb-local` como contenedor de servicio y ejecuta el mismo comando.
 
 ---
 

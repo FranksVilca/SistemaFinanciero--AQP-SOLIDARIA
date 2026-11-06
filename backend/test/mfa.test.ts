@@ -1,40 +1,8 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
-import { parse, type CollectionTag, type ScalarTag } from "yaml";
+import { template, resources, ofType, refOf } from "./support/cfnTemplate.js";
 
 // Static validation of infra/template.yaml (CA-11.1 / HU-11, T14).
 // This checks the declared IaC; deploy-time behavior (real TOTP challenge) must be verified against AWS.
-
-type Resource = { Type: string; Properties?: Record<string, unknown>; Condition?: string };
-type Template = { Resources: Record<string, Resource>; Outputs?: Record<string, unknown> };
-
-const INTRINSICS = [
-  "Ref", "Sub", "GetAtt", "Equals", "If", "Not", "And", "Or",
-  "Join", "Select", "Split", "FindInMap", "ImportValue", "GetAZs", "Base64", "Condition",
-];
-
-// Map CloudFormation short-form tags (!Ref X) to their long form ({ Ref: X }).
-const cfnTags: (ScalarTag | CollectionTag)[] = INTRINSICS.flatMap((name) => {
-  const key = name === "Ref" || name === "Condition" ? name : `Fn::${name}`;
-  const resolve = (value: unknown) =>
-    name === "GetAtt" && typeof value === "string" ? { [key]: value.split(".") } : { [key]: value };
-  return [
-    { tag: `!${name}`, resolve: (str: string) => resolve(str) } as ScalarTag,
-    { tag: `!${name}`, collection: "seq", resolve: (seq) => resolve(seq.toJSON()) } as CollectionTag,
-    { tag: `!${name}`, collection: "map", resolve: (map) => resolve(map.toJSON()) } as CollectionTag,
-  ];
-});
-
-const templatePath = fileURLToPath(new URL("../../infra/template.yaml", import.meta.url));
-const template = parse(readFileSync(templatePath, "utf8"), { customTags: cfnTags }) as Template;
-const resources = template.Resources;
-
-const ofType = (type: string) =>
-  Object.entries(resources).filter(([, r]) => r.Type === type);
-
-const refOf = (value: unknown): string | undefined =>
-  value && typeof value === "object" && "Ref" in value ? String((value as { Ref: unknown }).Ref) : undefined;
 
 const groupPool = (groupName: string): string | undefined => {
   const entry = ofType("AWS::Cognito::UserPoolGroup").find(

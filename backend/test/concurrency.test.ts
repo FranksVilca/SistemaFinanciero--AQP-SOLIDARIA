@@ -23,6 +23,10 @@ vi.mock("../src/shared/dynamo.js", () => {
 import { docClient } from "../src/shared/dynamo.js";
 import { handler as simulateDonationHandler } from "../src/donations/simulateDonation.js";
 
+// Unit scope only: DynamoDB is mocked and the mock decides the single winner, so this test checks
+// that a cancelled transaction maps to 409. Atomicity itself (one increment) is verified against
+// DynamoDB Local in test/integration/concurrency.integration.test.ts.
+
 describe("User Story 5 - Atomic Concurrency Verification (T08, CA-NF04.1)", () => {
   it("T08: 10 concurrent confirmation requests on the same donation should yield exactly 1 success (200) and 9 conflicts (409)", async () => {
     const donationId = "concurrent-donation-id";
