@@ -159,6 +159,11 @@ describe("Cognito Hosted UI domains (CA-03.1)", () => {
     expect(resources[client].Properties?.SupportedIdentityProviders).toEqual(["COGNITO"]);
   });
 
+  it.each([DONOR_CLIENT, STAFF_CLIENT])("%s allows the chained Hosted UI logout continuation route", (client) => {
+    const logoutUrls = resources[client].Properties?.LogoutURLs as string[];
+    expect(logoutUrls.some((url) => url.endsWith("/auth/logout/continue"))).toBe(true);
+  });
+
   it("donor and staff domains are distinct", () => {
     const [donor, staff] = [domainFor(DONOR_POOL), domainFor(STAFF_POOL)];
     expect(JSON.stringify(donor?.[1].Properties?.Domain)).not.toBe(

@@ -192,6 +192,7 @@ Resources:
         - http://localhost:3000/auth/callback
       LogoutURLs:
         - http://localhost:3000
+        - http://localhost:3000/auth/logout/continue
 
   CognitoUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
@@ -280,6 +281,7 @@ Resources:
         - http://localhost:3000/auth/staff/callback
       LogoutURLs:
         - http://localhost:3000
+        - http://localhost:3000/auth/logout/continue
 
   StaffUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain

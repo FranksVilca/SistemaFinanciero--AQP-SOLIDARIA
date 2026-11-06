@@ -1,4 +1,5 @@
 import { UserManager, WebStorageStateStore, InMemoryWebStorage, User } from "oidc-client-ts";
+import { buildHostedUiLogoutUrls, realmsMissingHostedUiDomain } from "./logoutChain.js";
 
 // Two separate Cognito user pools (CA-11.1): donors (MFA optional) and staff GESTOR/AUDITOR (MFA TOTP mandatory).
 export type AuthRealm = "donor" | "staff";
@@ -63,34 +64,76 @@ export async function handleOidcCallback(realm: AuthRealm = "donor"): Promise<Us
   return user ?? null;
 }
 
+// Pending Hosted UI /logout hops. Holds only Cognito logout URLs, never tokens.
+const LOGOUT_QUEUE_KEY = "aqp.pendingHostedUiLogout";
+
 export async function logoutWithOidc(): Promise<void> {
-  let hostedUiLogoutUrl: string | undefined;
-  for (const realm of Object.keys(userManagers) as AuthRealm[]) {
-    const manager = userManagers[realm];
+  const realms = Object.keys(userManagers) as AuthRealm[];
+  const hostedUiRealms = realms.map((realm) => ({ realm, ...realmConfigs[realm] }));
+
+  for (const realm of realmsMissingHostedUiDomain(hostedUiRealms)) {
+    console.warn(
+      `Hosted UI domain not configured for ${realm} realm: refresh token not revoked and Hosted UI session not ended`
+    );
+  }
+
+  for (const realm of realms) {
     const { hostedUiDomain, clientId } = realmConfigs[realm];
-    const user = await manager.getUser();
-    if (user && hostedUiDomain) {
-      if (user.refresh_token) {
-        try {
-          const response = await fetch(`${hostedUiDomain}/oauth2/revoke`, {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ token: user.refresh_token, client_id: clientId }),
-          });
-          if (!response.ok) {
-            console.warn(`Refresh token revocation failed for ${realm} realm: HTTP ${response.status}`);
-          }
-        } catch {
-          console.warn(`Refresh token revocation unreachable for ${realm} realm`);
+    try {
+      const user = await userManagers[realm].getUser();
+      if (user?.refresh_token && hostedUiDomain) {
+        const response = await fetch(`${hostedUiDomain}/oauth2/revoke`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ token: user.refresh_token, client_id: clientId }),
+        });
+        if (!response.ok) {
+          console.warn(`Refresh token revocation failed for ${realm} realm: HTTP ${response.status}`);
         }
       }
-      // End the Hosted UI session too; otherwise the next login silently reuses it.
-      hostedUiLogoutUrl = `${hostedUiDomain}/logout?${new URLSearchParams({
-        client_id: clientId,
-        logout_uri: postLogoutRedirectUri,
-      })}`;
+    } catch {
+      console.warn(`Refresh token revocation unreachable for ${realm} realm`);
     }
-    await manager.removeUser();
+    await userManagers[realm].removeUser().catch(() => undefined);
   }
-  window.location.href = hostedUiLogoutUrl ?? postLogoutRedirectUri;
+
+  // Visit every realm's /logout, even without an in-memory user (e.g. after a reload),
+  // because the Hosted UI cookie outlives the in-memory tokens.
+  const [first, ...rest] = buildHostedUiLogoutUrls(hostedUiRealms, window.location.origin);
+  if (!first) {
+    window.location.href = postLogoutRedirectUri;
+    return;
+  }
+  saveLogoutQueue(rest);
+  window.location.href = first;
+}
+
+// Called on LOGOUT_CONTINUE_PATH. Returns false once every Hosted UI session has ended.
+export function continueHostedUiLogout(): boolean {
+  const [next, ...rest] = readLogoutQueue();
+  if (!next) {
+    saveLogoutQueue([]);
+    return false;
+  }
+  saveLogoutQueue(rest);
+  window.location.href = next;
+  return true;
+}
+
+function readLogoutQueue(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(sessionStorage.getItem(LOGOUT_QUEUE_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((url): url is string => typeof url === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLogoutQueue(urls: string[]): void {
+  try {
+    if (urls.length) sessionStorage.setItem(LOGOUT_QUEUE_KEY, JSON.stringify(urls));
+    else sessionStorage.removeItem(LOGOUT_QUEUE_KEY);
+  } catch {
+    // Storage unavailable: remaining hops are skipped, the current realm still logs out.
+  }
 }

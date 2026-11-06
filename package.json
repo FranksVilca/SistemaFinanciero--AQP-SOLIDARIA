@@ -3,14 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Plataforma de Donaciones Seguras Zero Trust - Fundación AQP-SOLIDARIA",
+  "description": "Plataforma de Donaciones Seguras Zero Trust - Fundaci\u00f3n AQP-SOLIDARIA",
   "workspaces": [
     "backend",
     "frontend"
   ],
   "scripts": {
     "build": "npm run build --workspace=backend && npm run build --workspace=frontend",
-    "test": "npm run test --workspace=backend",
+    "test": "npm run test --workspace=backend && npm run test --workspace=frontend",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspace=backend && npm run typecheck --workspace=frontend"
   },
