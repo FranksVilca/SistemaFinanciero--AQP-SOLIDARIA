@@ -16,7 +16,7 @@ Este reporte solo declara como ejecutado lo que aparece en las salidas de la sec
 DynamoDB se reemplaza por mocks; las pruebas de plantilla analizan `infra/template.yaml` de forma estática.
 
 ```text
- RUN  v3.2.7 /home/drajev/Proyectos/SistemaFinanciero--AQP-SOLIDARIA/backend
+ RUN  v3.2.7 <repo>/backend
  ✓ test/authz.test.ts (13 tests) 15ms
  ✓ test/bola.test.ts (2 tests) 14ms
  ✓ test/audit.test.ts (4 tests) 21ms
@@ -35,7 +35,7 @@ DynamoDB se reemplaza por mocks; las pruebas de plantilla analizan `infra/templa
  Test Files  15 passed (15)
       Tests  117 passed (117)
 
- RUN  v3.2.7 /home/drajev/Proyectos/SistemaFinanciero--AQP-SOLIDARIA/frontend
+ RUN  v3.2.7 <repo>/frontend
  ✓ test/logoutChain.test.ts (15 tests) 8ms
  Test Files  1 passed (1)
       Tests  15 passed (15)
@@ -52,7 +52,7 @@ npm run dynamodb:local:stop
 ```
 
 ```text
- RUN  v3.2.7 /home/drajev/Proyectos/SistemaFinanciero--AQP-SOLIDARIA/backend
+ RUN  v3.2.7 <repo>/backend
 [integration] DynamoDB Local at http://localhost:8000: created aqp-it-projects, aqp-it-donations, aqp-it-idempotency, aqp-it-audit
  ✓ test/integration/ownership.integration.test.ts (2 tests) 77ms
 [T08] status codes: {"200":1,"409":9}

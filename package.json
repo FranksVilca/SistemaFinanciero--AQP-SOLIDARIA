@@ -12,7 +12,7 @@
     "build": "npm run build --workspace=backend && npm run build --workspace=frontend",
     "test": "npm run test --workspace=backend && npm run test --workspace=frontend",
     "test:integration": "npm run test:integration --workspace=backend",
-    "dynamodb:local": "docker run --rm -d --name aqp-dynamodb-local -p 8000:8000 amazon/dynamodb-local",
+    "dynamodb:local": "docker run --rm -d --name aqp-dynamodb-local -p 8000:8000 amazon/dynamodb-local@sha256:6ada631ec7aa5fc83446855eb17233e3dad184fec47477e8140c6c569cfe0c86",
     "dynamodb:local:stop": "docker stop aqp-dynamodb-local",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspace=backend && npm run typecheck --workspace=frontend"

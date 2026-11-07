@@ -16,7 +16,8 @@ jobs:
     services:
       # DynamoDB Local for the integration tests (T08 concurrency, T06/T07 idempotency, T09 ownership).
       dynamodb-local:
-        image: amazon/dynamodb-local
+        # Pinned by digest so integration runs are reproducible; keep in sync with package.json.
+        image: amazon/dynamodb-local@sha256:6ada631ec7aa5fc83446855eb17233e3dad184fec47477e8140c6c569cfe0c86
         ports:
           - 8000:8000
 

@@ -1,7 +1,7 @@
-import { applyLocalCredentials, hasLocalEndpoint, recreateLocalTables, SKIP_MESSAGE } from "./localTables.js";
+import { applyLocalCredentials, assertIntegrationEndpoint, recreateLocalTables, SKIP_MESSAGE } from "./localTables.js";
 
 export default async function setup(): Promise<void> {
-  if (!hasLocalEndpoint()) {
+  if (!assertIntegrationEndpoint()) {
     console.warn(SKIP_MESSAGE);
     return;
   }

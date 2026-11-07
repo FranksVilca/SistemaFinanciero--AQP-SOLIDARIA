@@ -20,6 +20,15 @@ export const SKIP_MESSAGE =
 
 export const hasLocalEndpoint = (): boolean => Boolean(process.env.DYNAMODB_ENDPOINT);
 
+// Locally a missing endpoint skips the suites; in CI it must fail so the job never passes with zero tests.
+export function assertIntegrationEndpoint(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.DYNAMODB_ENDPOINT) return true;
+  if (env.CI) {
+    throw new Error("[integration] DYNAMODB_ENDPOINT is required in CI; refusing to skip integration tests.");
+  }
+  return false;
+}
+
 // DynamoDB Local scopes tables by access key and region, so every process must use the same
 // fake credentials. They also guarantee these tests cannot authenticate against real AWS.
 export function applyLocalCredentials(): void {
