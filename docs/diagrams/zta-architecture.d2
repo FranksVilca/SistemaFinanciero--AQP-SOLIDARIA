@@ -1,0 +1,98 @@
+# AQP-SOLIDARIA · Arquitectura Zero Trust (NIST SP 800-207)
+# Render:  d2 --layout=tala --pad 30 zta-architecture.d2 zta-architecture.png   (también .svg)
+# Icono AWS = servicio de AWS · caja sin icono = código nuestro / no desplegado.
+
+vars: {
+  icons: https://icons.terrastruct.com/aws
+}
+
+direction: down
+
+classes: {
+  zone-red:   { style: { fill: "#FDEDEC"; stroke: "#C0392B"; stroke-width: 2; border-radius: 14; font-color: "#C0392B"; bold: true; font-size: 20 } }
+  zone-grey:  { style: { fill: "#F3F4F6"; stroke: "#6B7280"; stroke-width: 2; border-radius: 14; font-color: "#4B5563"; bold: true; font-size: 20 } }
+  zone-blue:  { style: { fill: "#EAF1FB"; stroke: "#1F5FBF"; stroke-width: 2; border-radius: 14; font-color: "#1F5FBF"; bold: true; font-size: 20 } }
+  zone-orange:{ style: { fill: "#FEF5E7"; stroke: "#E67E22"; stroke-width: 2; border-radius: 14; font-color: "#B9600F"; bold: true; font-size: 20 } }
+  zone-green: { style: { fill: "#EAF7EE"; stroke: "#1E8449"; stroke-width: 2; border-radius: 14; font-color: "#1E8449"; bold: true; font-size: 20 } }
+  svc:        { width: 90; height: 90; style: { font-size: 16 } }
+  code:       { shape: rectangle; style: { fill: "#FFFFFF"; stroke: "#1E8449"; stroke-width: 2; stroke-dash: 4; border-radius: 10; font-size: 16 } }
+  flow:       { style: { stroke-width: 3; font-size: 16 } }
+  soft:       { style: { stroke-width: 2; stroke-dash: 5; font-size: 15; stroke: "#6B7280"; font-color: "#4B5563" } }
+}
+
+zona: "ZONA NO CONFIABLE · navegador del usuario (nunca se confía)" {
+  class: zone-red
+  users: "Visitante · Donante\nGestor · Auditor" { shape: person; style.font-size: 16 }
+  spa: "SPA React\n(corre en el navegador)\ntokens solo en memoria" { shape: rectangle; style: { fill: "#FFFFFF"; stroke: "#C0392B"; stroke-width: 2; border-radius: 10; font-size: 16 } }
+}
+
+front: "ENTREGA DEL FRONTEND (solo archivos estáticos)" {
+  class: zone-grey
+  cf: "CloudFront + OAC\nHTTPS · CSP · HSTS" { class: svc; shape: image; icon: ${icons}/Networking%20%26%20Content%20Delivery/Amazon-CloudFront.svg }
+  s3: "S3 privado\n(guarda la SPA compilada)" { class: svc; shape: image; icon: ${icons}/Storage/Amazon-Simple-Storage-Service-S3.svg }
+}
+
+pa: "PA · administrador de políticas (identidad)" {
+  class: zone-blue
+  cognito: "Amazon Cognito\nPKCE · MFA TOTP*\naccess token ≤ 15 min" { class: svc; shape: image; icon: ${icons}/Security%2C%20Identity%2C%20%26%20Compliance/Amazon-Cognito.svg }
+}
+
+pep: "PEP · punto de aplicación (verifica CADA solicitud)" {
+  class: zone-orange
+  apigw: "API Gateway (HTTP API)\nJWT authorizer + scopes\n401: sin token / ID token" { class: svc; shape: image; icon: ${icons}/Networking%20%26%20Content%20Delivery/Amazon-API-Gateway.svg }
+}
+
+back: "BACKEND · un solo código (backend/src) desplegado como 9 funciones" {
+  class: zone-green
+  lam: "9 funciones Lambda (una por endpoint)\nlist · get · stats · create · publish\ndonate · simulate · me · audit" { class: svc; shape: image; icon: ${icons}/Compute/AWS-Lambda.svg }
+  authz: "authz · código compartido (NO es un servicio AWS)\nPE: rol + propietario + estado\nfail-closed → 401 / 403" { class: code }
+}
+
+avp: "Verified Permissions (Cedar)\nmotor externo · NO conectado hoy" {
+  shape: rectangle
+  style: { fill: "#F3F4F6"; stroke: "#6B7280"; stroke-width: 2; stroke-dash: 4; border-radius: 10; font-size: 16 }
+}
+
+datos: "DATOS · acceso mínimo" {
+  class: zone-green
+  role: "Rol IAM por función\n(9 roles, solo lo necesario)" { class: svc; shape: image; icon: ./icons/iam-role.png }
+  ddb: "DynamoDB\nProjects · Donations\nIdempotency · Audit" { class: svc; shape: image; icon: ${icons}/Database/Amazon-DynamoDB.svg }
+}
+
+tel: "TELEMETRÍA (principio 7)" {
+  class: zone-grey
+  cw: "CloudWatch Logs\nJSON + requestId" { class: svc; shape: image; icon: ${icons}/Management%20%26%20Governance/Amazon-CloudWatch.svg }
+  ct: "CloudTrail\n(no definido en el template)" { class: svc; shape: image; icon: ${icons}/Management%20%26%20Governance/AWS-CloudTrail.svg }
+}
+
+deploy: "Despliegue SAM / IAM\n(cambios en la cuenta AWS)" { class: svc; shape: image; icon: ${icons}/Management%20%26%20Governance/AWS-CloudFormation.svg }
+
+leyenda: |md
+  **LEYENDA**
+
+  icono AWS = servicio de AWS
+
+  caja sin icono = código nuestro / no desplegado
+
+  \* MFA: `OPTIONAL` en el template hoy
+| { style: { fill: "#FFFBEA"; stroke: "#6B7280"; border-radius: 10; font-size: 15 } }
+
+# ---- Flujos ----
+zona.users -> front.cf: "HTTPS" { class: soft }
+front.cf -> front.s3: "lee" { class: soft }
+front.cf -> zona.spa: "descarga el código de la SPA" { class: soft }
+
+zona.spa <-> pa.cognito: "① login: Auth Code + PKCE + MFA\n② devuelve access token ≤ 15 min" { class: flow; style.stroke: "#1F5FBF" }
+zona.spa -> pep.apigw: "③ Authorization: Bearer <token>" { class: flow; style.stroke: "#E67E22" }
+pa.cognito -> pep.apigw: "validación local\n(firma · issuer · aud · scopes)" { class: soft; style.stroke: "#1F5FBF" }
+
+pep.apigw -> back.lam: "④ claims ya verificados\n(sub · grupo · scopes)" { class: flow; style.stroke: "#E67E22" }
+back.lam -> back.authz: "⑤ enforceAuthz() antes de actuar" { class: flow; style.stroke: "#1E8449" }
+back.authz -> avp: "opcional" { class: soft }
+
+back.lam -> datos.role: "⑥ cada función usa solo su rol" { class: flow; style.stroke: "#1E8449" }
+datos.role -> datos.ddb { class: flow; style.stroke: "#1E8449" }
+
+back.lam -> tel.cw: "⑦ logs de todas las funciones" { class: soft }
+pep.apigw -> tel.cw: "logs de acceso" { class: soft }
+deploy -> tel.ct: "registra quién cambió qué" { class: soft }
