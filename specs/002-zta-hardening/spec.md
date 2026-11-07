@@ -38,7 +38,7 @@ Una persona con rol de gestor o auditor no puede iniciar sesión solo con contra
 
 1. **Given** un usuario del grupo gestor o auditor sin segundo factor completado, **When** intenta iniciar sesión, **Then** no obtiene un token de acceso.
 2. **Given** un usuario gestor con segundo factor configurado, **When** inicia sesión con contraseña y segundo factor, **Then** obtiene acceso con las capacidades de su rol.
-3. **Given** un donante, **When** inicia sesión, **Then** el flujo no se vuelve más pesado para él que hoy.
+3. **Given** un donante que inicia sesión por primera vez, **When** configura su segundo factor una sola vez, **Then** en adelante accede con contraseña y segundo factor igual que los demás roles (el servicio de identidad no permite exigirlo solo a ciertos grupos sin duplicar la gestión de usuarios).
 
 ---
 
@@ -274,6 +274,8 @@ Los documentos, el uso de IA y los diagramas dicen solo lo que existe. El códig
 - La auditoría usa una tabla con permisos de solo agregar dentro de la misma cuenta; mover la auditoría a otra cuenta de AWS queda como mejora ideal.
 - El segundo factor de roles privilegiados es por aplicación autenticadora (TOTP); no se usa SMS por la constitución.
 - El dominio propio de producción se conoce o se parametriza por entorno; no hay un dominio único codificado.
+- Los rechazos 401 que emite la pasarela antes de llegar al backend no pueden escribirse en la tabla de auditoría; quedan en los registros de acceso de la pasarela. Los 401 y 403 que decide el backend sí se auditan.
+- La protección contra borrado de tablas se activa solo en la etapa de producción, para no impedir la limpieza completa de la etapa académica (constitución, principio V). La recuperación a un punto en el tiempo tiene un costo marginal fuera del plan gratuito (centavos con estos volúmenes) y se controla con un parámetro.
 - La revalidación de sesión cuenta como mejora de prioridad baja y puede entregarse después de las de prioridad alta y media.
 - No se pudo probar contra AWS real el rechazo de tokens por API Gateway, la configuración real de Cognito ni la evidencia T10 completa; la validación de esas partes requiere un despliegue real y se registra como evidencia pendiente hasta entonces.
 - Dependencias: acceso a una cuenta de AWS para las pruebas finales, un emulador de base de datos en la integración continua y las constantes de la constitución v2.1.0.

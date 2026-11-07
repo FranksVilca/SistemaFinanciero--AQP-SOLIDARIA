@@ -1,0 +1,71 @@
+# Quickstart: validar el cumplimiento Zero Trust
+
+Guía de validación. Los detalles de diseño están en [data-model.md](data-model.md) y [contracts/](contracts/).
+
+## Requisitos
+
+- Node.js 24 y `npm ci` en la raíz.
+- Docker (para DynamoDB Local).
+- Para la validación final: una cuenta de AWS con SAM CLI y credenciales temporales (`aws login` o SSO).
+
+## 1. Calidad estática
+
+```bash
+npm run lint
+npm run format:check
+npm run typecheck
+```
+
+Esperado: 0 errores. Prueba negativa: añadir una función de más de 50 líneas o un `any` sin justificación hace fallar el lint.
+
+## 2. Pruebas unitarias e integración
+
+```bash
+docker run -d --name ddb-local -p 8000:8000 amazon/dynamodb-local
+DYNAMODB_ENDPOINT=http://localhost:8000 npm run test:integration --workspace=backend
+npm run test
+```
+
+Esperado: confirmar donación devuelve 200 y el total del proyecto sube una vez (US1); matriz rol × acción y BOLA rechazadas sin cambiar estado (US3); idempotencia (misma clave: misma donación, otro monto: 409); eventos `DENIED` con actor pseudonimizado (US4).
+
+## 3. Verificaciones del template
+
+```bash
+npm run test:infra --workspace=backend
+cfn-lint infra/template.yaml
+checkov -f infra/template.yaml
+```
+
+Esperado: MFA `REQUIRED`; Audit solo con `PutItem`; sin `Delete*` ni comodines; CORS sin `*`; retención de 14 días; throttling por ruta; la prueba de cobertura falla si se agrega una función sin `withAuth` (probarlo a propósito en una rama de prueba).
+
+## 4. Despliegue y pruebas en AWS real (evidencia pendiente)
+
+```bash
+sam build -t infra/template.yaml
+sam deploy --guided
+```
+
+Comprobar y guardar en `evidence/`:
+
+| Prueba | Cómo | Esperado |
+|---|---|---|
+| Token falso, vencido o ID token | `curl` con `Authorization: Bearer` alterado en una ruta protegida | 401 de la pasarela |
+| MFA | Iniciar sesión como gestor sin TOTP configurado | Se exige enrolamiento; no se emiten tokens |
+| T10 | Invocar una operación fuera de la matriz IAM | `AccessDeniedException` |
+| Sesión revocada | Revocar el refresh token y llamar a una acción sensible con el access token aún vigente | 401 |
+| CSP y login | Iniciar sesión en el dominio de CloudFront | El intercambio de código con Cognito no es bloqueado |
+| Auditoría inmutable | Intentar `UpdateItem` sobre la tabla Audit con un rol de función | `AccessDenied` |
+| Recuperación (producción) | Verificar `DeletionProtectionEnabled` y PITR activos | Ambos activos |
+
+## 5. Cierre documental
+
+- `docs/zta-hallazgos-y-mejoras.md`: actualizar el estado de H1–H11 y de los principios 3, 6 y 7.
+- `AI_USAGE.md`: sin capacidades inexistentes; todas las herramientas listadas.
+- `specs/001-secure-donations/research.md` sección 2: expresión `ADD ... SET` corregida.
+
+## Limpieza
+
+```bash
+sam delete
+docker rm -f ddb-local
+```
