@@ -86,7 +86,7 @@ Requiere Docker y [AWS SAM CLI](https://docs.aws.amazon.com/serverless-applicati
 npm run dev:api        # API en http://127.0.0.1:3100 (otro puerto: PORT=3200 npm run dev:api)
 npm run dev:api:stop   # detiene DynamoDB Local
 ```
-El script compila el backend, levanta DynamoDB Local en una red Docker, crea las tablas a partir de `infra/template.yaml` y ejecuta `sam local start-api` con credenciales falsas, por lo que nunca accede a AWS real.
+El script compila el backend, levanta DynamoDB Local en una red Docker, crea las tablas a partir de `infra/template.yaml` y ejecuta `sam local start-api` con `DYNAMODB_ENDPOINT` apuntando al contenedor local, de modo que las Lambdas leen y escriben solo en DynamoDB Local.
 
 Limitación: SAM CLI no emula los JWT authorizers de HTTP API ni Cognito. Las rutas públicas (`GET /v1/projects...`) funcionan; las protegidas responden 401 porque el backend exige identidad (defensa en profundidad). Su evidencia debe obtenerse sobre el despliegue en AWS.
 
