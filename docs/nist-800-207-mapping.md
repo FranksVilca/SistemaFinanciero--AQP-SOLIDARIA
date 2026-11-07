@@ -15,15 +15,15 @@ Cada principio de NIST SP 800-207 con el control que lo implementa, la evidencia
 | Unitaria | Lógica sin base de datos | `npm run test` |
 | Integración | Handlers contra DynamoDB Local | `npm run test:integration` |
 | Infraestructura | Aserciones sobre `infra/template.yaml`, etapas `academic` y `production` | `npm run test:infra` |
-| Emulador (Floci, con IAM activo) | Políticas IAM reales del template, Cognito con MFA y despliegue del stack | `npm run test:floci` |
-| AWS real | JWT authorizer de API Gateway, Cognito real, `AccessDenied` real | pendiente: [quickstart.md](../specs/002-zta-hardening/quickstart.md), sección 4 |
+| Emulador (Floci, con IAM y TLS activos) | Políticas IAM reales del template, Cognito con MFA, autorizador JWT de API Gateway y despliegue del stack | `npm run test:floci` |
+| AWS real | Lo que el emulador no puede mostrar: ejecución de las Lambdas, token con scopes correctos y token vencido, Hosted UI, revocación real, etapa `production` | pendiente: [quickstart.md](../specs/002-zta-hardening/quickstart.md), sección 4 |
 
 ## Componentes de la arquitectura
 
 | Componente NIST | Implementación | Evidencia |
 |---|---|---|
 | **PA** (Policy Administrator): identidad y sesión | Amazon Cognito: MFA TOTP obligatorio, Authorization Code + PKCE, tokens de 15 minutos | `backend/test/infra/mfa.test.ts`, `backend/test/floci/cognito.test.ts` |
-| **PEP** (Policy Enforcement Point) | API Gateway con JWT authorizer y scopes por ruta; CloudFront con cabeceras de seguridad; `withAuth()` en cada función | `backend/test/infra/telemetryAndEdge.test.ts`, `backend/test/infra/withAuthCoverage.test.ts` |
+| **PEP** (Policy Enforcement Point) | API Gateway con JWT authorizer y scopes por ruta; CloudFront con cabeceras de seguridad; `withAuth()` en cada función | `backend/test/floci/apiAuthorizer.test.ts`, `backend/test/infra/telemetryAndEdge.test.ts`, `backend/test/infra/withAuthCoverage.test.ts` |
 | **PE** (Policy Engine) | Módulo `authz` embebido (`backend/src/authz/evaluateAuthz.ts`), fail-closed; Verified Permissions con Cedar es la fase 2 (`policies/README.md`) | `backend/test/authz.test.ts`, `backend/test/withAuth.test.ts` |
 | Fuentes de datos (CDM, logs, CloudTrail) | Tabla de auditoría, logs de 14 días, CloudTrail, registros de acceso del API | `backend/test/integration/audit.test.ts`, `backend/test/infra/telemetryAndEdge.test.ts` |
 
@@ -60,9 +60,10 @@ Cada principio de NIST SP 800-207 con el control que lo implementa, la evidencia
 | `backend/test/integration/bola.test.ts` | Otro donante o un gestor no pueden actuar sobre una donación ajena; el estado no cambia |
 | `backend/test/integration/sessionCheck.test.ts` | Una sesión revocada, un servicio inaccesible o una respuesta tardía dan 401 en publicar, auditar y confirmar |
 | `backend/test/integration/idToken.test.ts`, `backend/test/floci/cognito.test.ts` | Un ID token (también uno emitido por el Cognito emulado) da 401 en todas las rutas protegidas |
+| `backend/test/floci/apiAuthorizer.test.ts` | El autorizador de API Gateway emulado rechaza el token alterado, el de otro pool y el que no trae el scope de la ruta (el ID token recibe 403) |
 | `backend/test/infra/mfa.test.ts` | Tokens de acceso e identidad de 15 minutos como máximo |
 
-**Estado: Cumple (real pendiente)** — la revocación contra el `userInfo` de Cognito real y el rechazo del ID token por el authorizer de API Gateway están pendientes de AWS.
+**Estado: Cumple (real pendiente)** — falta la revocación contra el `userInfo` de Cognito real, un token vencido y un token con los scopes correctos aceptado por el gateway (`evidence/test-run-report.md`, sección 3).
 
 ## Principio 4 — El acceso lo decide una política dinámica
 
@@ -96,10 +97,11 @@ Cada principio de NIST SP 800-207 con el control que lo implementa, la evidencia
 | Evidencia | Qué comprueba |
 |---|---|
 | `backend/test/floci/cognito.test.ts` | Contra un Cognito emulado construido con la configuración del template: sin segundo factor no hay tokens (`MFA_SETUP`), con él sí, y solo TOTP |
+| `backend/test/floci/apiAuthorizer.test.ts` | Desplegado el template: las 6 rutas protegidas devuelven 401 sin token, con un token falso, con el payload alterado y con un token de otro pool; las 3 públicas no piden token |
 | `backend/test/infra/mfa.test.ts` | `MfaConfiguration: ON`, solo TOTP, sin SMS, scopes en toda ruta protegida |
 | `backend/test/withAuth.test.ts` | 401 sin identidad, 403 sin rol, 404 solo tras pasar el rol, sin filtrar detalles internos |
 
-**Estado: Cumple (real pendiente)** — el rechazo de tokens falsos o vencidos por API Gateway y el flujo de inicio de sesión real no pueden emularse.
+**Estado: Cumple (real pendiente)** — el emulador no ejecuta las Lambdas ni el Hosted UI, y no hay forma de probar un token vencido; el rechazo de tokens falsos, alterados y de otro pool por el autorizador sí está demostrado.
 
 ## Principio 7 — Recolectar información para mejorar la postura
 

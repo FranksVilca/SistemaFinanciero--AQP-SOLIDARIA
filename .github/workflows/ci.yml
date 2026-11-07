@@ -88,8 +88,8 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Start Floci with IAM enforcement
-        run: docker run -d --name floci -p 4566:4566 -e FLOCI_SERVICES_IAM_ENFORCEMENT_ENABLED=true floci/floci:2.4.0
-      - name: Emulator tests (T10 AccessDenied, T11 ID token, T14 mandatory MFA, stack deployment)
+        run: docker compose -f backend/test/floci/docker-compose.yml up -d
+      - name: Emulator tests (T02/T11 API Gateway authorizer, T10 AccessDenied, T14 mandatory MFA, stack deployment)
         run: npm run test:floci
         env:
           FLOCI_ENDPOINT: http://localhost:4566

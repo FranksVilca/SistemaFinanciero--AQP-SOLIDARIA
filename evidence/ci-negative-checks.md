@@ -13,6 +13,8 @@ Se introdujo a propósito cada fallo en el árbol de trabajo local, se ejecutó 
 | d | `GetProjectFunction` con `dynamodb:DeleteItem` | `emulator` (`iamEnforcement.test.ts`, Floci con IAM activo) | **Falla**: 1 prueba (el borrado deja de recibir `AccessDenied`). |
 | e | `CreateProjectFunction` sin permiso sobre la tabla de auditoría | `emulator` | **Falla**: 2 pruebas (el handler no puede escribir su evento). |
 
+| f | `POST /v1/donations` publicada sin autorizador (`Authorizer: NONE`) | `infra-tests` y `emulator` (`apiAuthorizer.test.ts`) | **Falla** en ambos: 2 pruebas de infraestructura y, en el emulador, el conteo de rutas protegidas (de 6 a 5). Las demás pruebas del emulador derivan sus rutas del propio template, por lo que dependen de ese conteo para este caso. |
+
 Nota: `cfn-lint` solo valida la parte SAM del template si `aws-sam-translator` está instalado; sin él la omite sin avisar. El CI lo instala explícitamente (`pip install cfn-lint aws-sam-translator checkov`).
 
 ## Conclusión

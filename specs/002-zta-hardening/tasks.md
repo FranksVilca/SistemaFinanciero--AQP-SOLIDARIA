@@ -301,6 +301,10 @@ Identificadores y comentarios en inglés, mensajes al usuario en español; funci
 - [X] T087 Add `FrontendBucketPolicy` to `infra/template.yaml` (CloudFront OAC read only, TLS only; the site could not be read without it) and `backend/test/infra/networkSecurity.test.ts` for NIST principle 2
 - [X] T088 Write `docs/nist-800-207-mapping.md` (7 principles, PA/PEP/PE, evidence, state) and `backend/test/infra/nistMapping.test.ts`, which fails if a principle is missing or a cited file does not exist
 - [X] T089 Add the `emulator` job to `.github/workflows/ci.yml` as a deploy gate and install `aws-sam-translator` with `cfn-lint` (without it the SAM part is silently skipped)
+- [X] T091 Research other emulators (MiniStack, fakecloud, LocalStack, Moto) for the pieces Floci was assumed not to cover; record the findings in `research.md` section 11
+- [X] T092 Create `backend/test/floci/apiAuthorizer.test.ts`: the template deployed in Floci with TLS on; the JWT authorizer rejects no token, a forged token, a token with an altered payload and a token of another pool (401), rejects ID tokens and access tokens without the route scope (403, scopes applied from the template) and accepts a genuine access token; extract `helpers/cognitoUsers.ts` and `helpers/stack.ts`
+- [X] T093 Configure `backend/test/floci/docker-compose.yml` and the CI `emulator` job with TLS, the https base URL and private JWT targets so Floci's authorizer can read the issuer keys
+- [X] T094 Update the evidence and mapping documents with the authorizer results and the exact remaining limits (Lambda execution needs the Docker socket and was not enabled)
 - [X] T090 Update `evidence/t10-access-denied.md`, `evidence/test-run-report.md`, `evidence/ci-negative-checks.md`, `specs/002-zta-hardening/quickstart.md`, `README.md`, `AI_USAGE.md` and `docs/zta-hallazgos-y-mejoras.md` with the new evidence and counts
 
 ---

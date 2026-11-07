@@ -31,18 +31,19 @@ Esperado: confirmar donación devuelve 200 y el total del proyecto sube una vez 
 ## 2b. Emulador de AWS (Floci) con IAM activo
 
 ```bash
-docker compose -f backend/test/floci/docker-compose.yml up -d   # Floci 2.4.0 con FLOCI_SERVICES_IAM_ENFORCEMENT_ENABLED=true
+docker compose -f backend/test/floci/docker-compose.yml up -d   # Floci 2.4.0 con IAM y TLS activos (ver el archivo)
 npm run test:floci
 ```
 
-Sin esa opción Floci acepta cualquier operación y las pruebas de IAM no demostrarían nada; el `docker-compose.yml` ya la activa.
+Sin la opción de IAM Floci acepta cualquier operación y las pruebas no demostrarían nada. El TLS propio de Floci hace falta porque su autorizador JWT exige un emisor `https://`. El `docker-compose.yml` activa ambas cosas y las explica.
 
-Esperado (60 pruebas):
+Esperado (72 pruebas):
 - **IAM (T10):** cada handler funciona con la política exacta de su rol en `infra/template.yaml` y todo lo demás recibe `AccessDeniedException`.
 - **Cognito (T11, T14):** un usuario sin segundo factor no recibe tokens (`MFA_SETUP`); un ID token da 401 en las rutas protegidas.
+- **API Gateway (T02, T11):** desplegado el template, el autorizador JWT rechaza sin token, con token falso, con el payload alterado y con un token de otro pool (401), y rechaza el ID token y los tokens sin el scope de la ruta (403); acepta un token de acceso genuino.
 - **Despliegue:** `infra/template.yaml` despliega como stack (SAM incluido) en la etapa académica, con y sin las opciones de detección.
 
-Límites del emulador: no ejecuta el JWT authorizer de API Gateway, no ejecuta las Lambdas y no puede desplegar la etapa `production` (ver `evidence/test-run-report.md`, sección 3).
+Límites del emulador: no ejecuta las Lambdas (exigiría montar el socket de Docker dentro de su contenedor), no concede los scopes `api/*` en el inicio de sesión por API, no permite probar un token vencido y no puede desplegar la etapa `production` (ver `evidence/test-run-report.md`, sección 3).
 
 ## 3. Verificaciones del template
 

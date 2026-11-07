@@ -1,17 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
-  AdminAddUserToGroupCommand,
-  AdminCreateUserCommand,
-  AdminInitiateAuthCommand,
-  AdminRespondToAuthChallengeCommand,
-  AdminSetUserPasswordCommand,
-  AssociateSoftwareTokenCommand,
-  CognitoIdentityProviderClient,
   CreateGroupCommand,
   CreateUserPoolClientCommand,
   CreateUserPoolCommand,
   SetUserPoolMfaConfigCommand,
-  VerifySoftwareTokenCommand,
   type AuthenticationResultType,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -20,68 +12,33 @@ import { handler as getMyDonations } from "../../src/donations/getMyDonations.js
 import { loadTemplate, propertiesOf, resourcesOfType } from "../infra/helpers/loadTemplate.js";
 import { buildEvent } from "../integration/helpers/events.js";
 import { clearAllTables, seedProject } from "../integration/helpers/seed.js";
-import { FLOCI_ENV } from "./flociEnv.js";
-import { jwtPayload, totpCode } from "./helpers/totp.js";
+import {
+  cognito,
+  createUserInGroup,
+  enrollAuthenticator,
+  gatewayClaims,
+  login,
+  type PoolRef,
+} from "./helpers/cognitoUsers.js";
+import { jwtPayload } from "./helpers/totp.js";
 
 /**
  * T11 and T14 against an emulated Cognito. The user pool is built from the MFA settings of
  * infra/template.yaml; the claims of the tokens it issues are then given to the real handlers, the way the
- * HTTP API hands the verified claims of a JWT to a Lambda. What the emulator cannot do is run the JWT
- * authorizer of API Gateway: that rejection (and the scopes check) still needs a real account.
+ * HTTP API hands the verified claims of a JWT to a Lambda. The authorizer of API Gateway itself is exercised
+ * in apiAuthorizer.test.ts.
  */
 
-const PASSWORD = "Passw0rd!x";
 const ROLES = ["DONANTE", "GESTOR", "AUDITOR"] as const;
 type Role = (typeof ROLES)[number];
 
-const cognito = new CognitoIdentityProviderClient({
-  region: FLOCI_ENV.AWS_REGION,
-  endpoint: FLOCI_ENV.FLOCI_ENDPOINT,
-  credentials: { accessKeyId: FLOCI_ENV.AWS_ACCESS_KEY_ID, secretAccessKey: FLOCI_ENV.AWS_SECRET_ACCESS_KEY },
-});
-
-let userPoolId: string;
-let clientId: string;
-
-const usernameOf = (role: Role) => `${role.toLowerCase()}-${runId}@aqpsolidaria.pe`;
 const runId = randomUUID().slice(0, 8);
+const usernameOf = (role: Role) => `${role.toLowerCase()}-${runId}@aqpsolidaria.pe`;
 
-const login = (role: Role) =>
-  cognito.send(
-    new AdminInitiateAuthCommand({
-      UserPoolId: userPoolId,
-      ClientId: clientId,
-      AuthFlow: "ADMIN_USER_PASSWORD_AUTH",
-      AuthParameters: { USERNAME: usernameOf(role), PASSWORD: PASSWORD },
-    })
-  );
+let pool: PoolRef;
 
-/** Enrolls an authenticator app for the user and returns the tokens issued when the enrollment completes. */
-async function enrollAuthenticator(role: Role): Promise<{ secret: string; tokens: AuthenticationResultType }> {
-  const setup = await login(role);
-  const association = await cognito.send(new AssociateSoftwareTokenCommand({ Session: setup.Session }));
-  const verification = await cognito.send(
-    new VerifySoftwareTokenCommand({ Session: association.Session, UserCode: totpCode(association.SecretCode!) })
-  );
-  const completed = await cognito.send(
-    new AdminRespondToAuthChallengeCommand({
-      UserPoolId: userPoolId,
-      ClientId: clientId,
-      ChallengeName: "MFA_SETUP",
-      Session: verification.Session,
-      ChallengeResponses: { USERNAME: setup.ChallengeParameters!.USERNAME },
-    })
-  );
-  return { secret: association.SecretCode!, tokens: completed.AuthenticationResult! };
-}
-
-/** The claims that the HTTP API authorizer would pass to the Lambda for a verified token. */
-function gatewayClaims(token: string): Record<string, unknown> {
-  const payload = jwtPayload(token);
-  const groups = payload["cognito:groups"] as string[] | undefined;
-  // API Gateway delivers array claims as a bracketed string such as "[DONANTE GESTOR]".
-  return { ...payload, ...(groups && { "cognito:groups": `[${groups.join(" ")}]` }) };
-}
+const loginAs = (role: Role) => login(pool, usernameOf(role));
+const enrollAs = (role: Role) => enrollAuthenticator(pool, usernameOf(role));
 
 const eventWithClaims = (claims: Record<string, unknown>, extra: Parameters<typeof buildEvent>[0] = {}) => ({
   ...buildEvent(extra),
@@ -90,21 +47,21 @@ const eventWithClaims = (claims: Record<string, unknown>, extra: Parameters<type
 
 beforeAll(async () => {
   const template = loadTemplate("academic");
-  const pool = propertiesOf(resourcesOfType(template, "AWS::Cognito::UserPool")[0][1]);
+  const templatePool = propertiesOf(resourcesOfType(template, "AWS::Cognito::UserPool")[0][1]);
 
   const created = await cognito.send(
     new CreateUserPoolCommand({
       PoolName: `zta-${runId}`,
-      MfaConfiguration: pool.MfaConfiguration as "ON",
+      MfaConfiguration: templatePool.MfaConfiguration as "ON",
       UsernameAttributes: ["email"],
     })
   );
-  userPoolId = created.UserPool!.Id!;
+  const userPoolId = created.UserPool!.Id!;
   await cognito.send(
     new SetUserPoolMfaConfigCommand({
       UserPoolId: userPoolId,
-      MfaConfiguration: pool.MfaConfiguration as "ON",
-      SoftwareTokenMfaConfiguration: { Enabled: (pool.EnabledMfas as string[]).includes("SOFTWARE_TOKEN_MFA") },
+      MfaConfiguration: templatePool.MfaConfiguration as "ON",
+      SoftwareTokenMfaConfiguration: { Enabled: (templatePool.EnabledMfas as string[]).includes("SOFTWARE_TOKEN_MFA") },
     })
   );
   const client = await cognito.send(
@@ -114,30 +71,17 @@ beforeAll(async () => {
       ExplicitAuthFlows: ["ALLOW_ADMIN_USER_PASSWORD_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"],
     })
   );
-  clientId = client.UserPoolClient!.ClientId!;
+  pool = { userPoolId, clientId: client.UserPoolClient!.ClientId! };
 
   for (const role of ROLES) {
     await cognito.send(new CreateGroupCommand({ UserPoolId: userPoolId, GroupName: role }));
-    await cognito.send(
-      new AdminCreateUserCommand({ UserPoolId: userPoolId, Username: usernameOf(role), MessageAction: "SUPPRESS" })
-    );
-    await cognito.send(
-      new AdminSetUserPasswordCommand({
-        UserPoolId: userPoolId,
-        Username: usernameOf(role),
-        Password: PASSWORD,
-        Permanent: true,
-      })
-    );
-    await cognito.send(
-      new AdminAddUserToGroupCommand({ UserPoolId: userPoolId, Username: usernameOf(role), GroupName: role })
-    );
+    await createUserInGroup(pool, usernameOf(role), role);
   }
 });
 
 describe("mandatory second factor (T14)", () => {
   it.each(ROLES)("a %s without a second factor receives no tokens, only the enrollment challenge", async (role) => {
-    const response = await login(role);
+    const response = await loginAs(role);
 
     expect(response.AuthenticationResult).toBeUndefined();
     expect(response.ChallengeName).toBe("MFA_SETUP");
@@ -145,10 +89,10 @@ describe("mandatory second factor (T14)", () => {
   });
 
   it("issues tokens only after the authenticator app is enrolled, and then asks for its code at every login", async () => {
-    const { tokens } = await enrollAuthenticator("AUDITOR");
+    const { tokens } = await enrollAs("AUDITOR");
     expect(tokens.AccessToken).toBeTruthy();
 
-    const nextLogin = await login("AUDITOR");
+    const nextLogin = await loginAs("AUDITOR");
     expect(nextLogin.AuthenticationResult).toBeUndefined();
     expect(nextLogin.ChallengeName).toBe("SOFTWARE_TOKEN_MFA");
   });
@@ -159,8 +103,8 @@ describe("token types (T11)", () => {
   let managerTokens: AuthenticationResultType;
 
   beforeAll(async () => {
-    donorTokens = (await enrollAuthenticator("DONANTE")).tokens;
-    managerTokens = (await enrollAuthenticator("GESTOR")).tokens;
+    donorTokens = (await enrollAs("DONANTE")).tokens;
+    managerTokens = (await enrollAs("GESTOR")).tokens;
   });
   beforeEach(clearAllTables);
 

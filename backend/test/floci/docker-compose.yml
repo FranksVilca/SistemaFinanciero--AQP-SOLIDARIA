@@ -4,5 +4,12 @@ services:
     environment:
       # Without this flag Floci accepts every request and the IAM evidence would prove nothing.
       FLOCI_SERVICES_IAM_ENFORCEMENT_ENABLED: "true"
+      # The JWT authorizer of API Gateway refuses an issuer that is not https. With TLS on, Floci signs its tokens with
+      # https://localhost:4566/<pool> and the authorizer trusts its own local CA when it reads the keys (JWKS).
+      # The tests keep calling the emulator over plain http://localhost:4566, which stays available.
+      FLOCI_TLS_ENABLED: "true"
+      FLOCI_BASE_URL: https://localhost:4566
+      # Lets the authorizer read the keys from an issuer on localhost.
+      FLOCI_SECURITY_ALLOW_PRIVATE_JWT_TARGETS: "true"
     ports:
       - "4566:4566"

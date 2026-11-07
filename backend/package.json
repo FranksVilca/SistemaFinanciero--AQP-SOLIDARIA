@@ -18,6 +18,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@aws-sdk/client-apigatewayv2": "^3.1164.0",
     "@aws-sdk/client-cloudformation": "^3.1164.0",
     "@aws-sdk/client-cloudwatch-logs": "^3.1164.0",
     "@aws-sdk/client-cognito-identity-provider": "^3.1164.0",

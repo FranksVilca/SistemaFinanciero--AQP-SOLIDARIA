@@ -1,0 +1,82 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  CloudFormationClient,
+  CreateStackCommand,
+  DeleteStackCommand,
+  DescribeStacksCommand,
+  ListStackResourcesCommand,
+  type StackResourceSummary,
+} from "@aws-sdk/client-cloudformation";
+import { FLOCI_ENV } from "../flociEnv.js";
+
+const TEMPLATE = readFileSync(
+  resolve(dirname(fileURLToPath(import.meta.url)), "../../../../infra/template.yaml"),
+  "utf8"
+);
+const CAPABILITIES = ["CAPABILITY_IAM", "CAPABILITY_AUTO_EXPAND", "CAPABILITY_NAMED_IAM"];
+const POLL_ATTEMPTS = 60;
+const POLL_WAIT_MS = 500;
+
+export const cloudFormation = new CloudFormationClient({
+  region: FLOCI_ENV.AWS_REGION,
+  endpoint: FLOCI_ENV.FLOCI_ENDPOINT,
+  credentials: { accessKeyId: FLOCI_ENV.AWS_ACCESS_KEY_ID, secretAccessKey: FLOCI_ENV.AWS_SECRET_ACCESS_KEY },
+});
+
+async function stackStatus(stackName: string): Promise<string | undefined> {
+  try {
+    const { Stacks } = await cloudFormation.send(new DescribeStacksCommand({ StackName: stackName }));
+    return Stacks?.[0]?.StackStatus;
+  } catch {
+    return undefined; // the stack does not exist
+  }
+}
+
+async function waitFor(stackName: string, done: (status: string | undefined) => boolean): Promise<string | undefined> {
+  for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
+    const status = await stackStatus(stackName);
+    if (done(status)) return status;
+    await new Promise((resolveWait) => setTimeout(resolveWait, POLL_WAIT_MS));
+  }
+  return stackStatus(stackName);
+}
+
+/** Deploys infra/template.yaml (SAM included) as a stack, replacing a previous one, and returns its resources. */
+export async function deployStack(
+  stackName: string,
+  parameters: Record<string, string>
+): Promise<StackResourceSummary[]> {
+  await cloudFormation.send(new DeleteStackCommand({ StackName: stackName }));
+  await waitFor(stackName, (status) => status === undefined);
+
+  await cloudFormation.send(
+    new CreateStackCommand({
+      StackName: stackName,
+      TemplateBody: TEMPLATE,
+      Capabilities: CAPABILITIES as never,
+      Parameters: Object.entries(parameters).map(([ParameterKey, ParameterValue]) => ({
+        ParameterKey,
+        ParameterValue,
+      })),
+    })
+  );
+  const status = await waitFor(stackName, (current) => current !== undefined && !current.endsWith("IN_PROGRESS"));
+  if (status !== "CREATE_COMPLETE") throw new Error(`Stack ${stackName} ended as ${status}`);
+
+  const { StackResourceSummaries = [] } = await cloudFormation.send(
+    new ListStackResourcesCommand({ StackName: stackName })
+  );
+  return StackResourceSummaries;
+}
+
+export async function deleteStack(stackName: string): Promise<void> {
+  await cloudFormation.send(new DeleteStackCommand({ StackName: stackName }));
+}
+
+export const countOf = (resources: StackResourceSummary[], type: string): number =>
+  resources.filter((resource) => resource.ResourceType === type).length;
+
+export const physicalIdOf = (resources: StackResourceSummary[], type: string): string =>
+  resources.find((resource) => resource.ResourceType === type)!.PhysicalResourceId!;
