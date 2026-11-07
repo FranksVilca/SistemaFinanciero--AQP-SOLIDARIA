@@ -1,64 +1,99 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Suite de Pruebas de Aceptación Zero Trust T01 - T14
+# Pruebas de aceptación Zero Trust T01 - T14 contra un despliegue REAL en AWS.
 # Plataforma de Donaciones Seguras — Fundación AQP-SOLIDARIA
+#
+# Las pruebas automáticas locales (DynamoDB Local y template) cubren la lógica; este script comprueba lo que solo
+# AWS real puede mostrar: el JWT authorizer de API Gateway y las respuestas con tokens de Cognito.
+#
+# Variables: API_URL, DONOR_TOKEN, GESTOR_TOKEN, AUDITOR_TOKEN (access tokens), ID_TOKEN (token de identidad).
+# Los tokens se obtienen con el Hosted UI de Cognito después de enrolar el segundo factor (TOTP).
 # ==============================================================================
 
-set -euo pipefail
+set -uo pipefail
 
-API_URL="${API_URL:-https://example.execute-api.us-east-1.amazonaws.com/academic}"
+API_URL="${API_URL:?Defina API_URL con la salida ApiEndpoint del stack}"
 DONOR_TOKEN="${DONOR_TOKEN:-}"
 GESTOR_TOKEN="${GESTOR_TOKEN:-}"
 AUDITOR_TOKEN="${AUDITOR_TOKEN:-}"
 ID_TOKEN="${ID_TOKEN:-}"
+PLACEHOLDER_UUID="11111111-1111-4111-8111-111111111111"
 
-echo "======================================================================"
-echo "Iniciando Ejecución de Casos de Prueba T01 - T14 contra $API_URL"
-echo "======================================================================"
+failures=0
 
-# T01: Visitante consulta proyectos
-echo "[T01] Visitante consulta catálogo público..."
-res=$(curl -s -w "\n%{http_code}" -X GET "$API_URL/v1/projects")
-code=$(echo "$res" | tail -n1)
-if [ "$code" -eq 200 ]; then echo "  [PASS] T01 OK (HTTP 200)"; else echo "  [FAIL] T01 fallo con $code"; exit 1; fi
+# check <id> <description> <expected codes separated by "|"> <actual code>
+check() {
+  local id="$1" description="$2" expected="$3" actual="$4"
+  if [[ "|$expected|" == *"|$actual|"* ]]; then
+    echo "  [PASS] $id $description (HTTP $actual)"
+  else
+    echo "  [FAIL] $id $description: esperado $expected, obtenido $actual"
+    failures=$((failures + 1))
+  fi
+}
 
-# T02: Sin token intenta donar
-echo "[T02] Donación sin token..."
-code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/v1/donations" \
-  -H "Content-Type: application/json" -d '{"projectId":"proj-1","amountCents":5000}')
-if [ "$code" -eq 401 ]; then echo "  [PASS] T02 OK (HTTP 401)"; else echo "  [FAIL] T02 fallo con $code"; fi
+status_of() { curl -s -o /dev/null -w "%{http_code}" "$@"; }
 
-# T03: Donante intenta crear proyecto
-echo "[T03] Donante intenta crear proyecto (escalación vertical)..."
-code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/v1/projects" \
-  -H "Authorization: Bearer $DONOR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"title":"Proyecto No Autorizado","description":"Intento donante","goalAmountCents":500000}')
-if [ "$code" -eq 403 ]; then echo "  [PASS] T03 OK (HTTP 403)"; else echo "  [FAIL] T03 fallo con $code"; fi
+skip() { echo "  [SKIP] $1 $2"; }
 
-# T04: Validación de montos inválidos
-echo "[T04] Donante envía monto inválido (0 o negativo)..."
-code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/v1/donations" \
-  -H "Authorization: Bearer $DONOR_TOKEN" \
-  -H "Idempotency-Key: $(uuidgen 2>/dev/null || echo "11111111-1111-1111-1111-111111111111")" \
-  -H "Content-Type: application/json" \
-  -d '{"projectId":"11111111-1111-1111-1111-111111111111","amountCents":0}')
-if [ "$code" -eq 400 ]; then echo "  [PASS] T04 OK (HTTP 400)"; else echo "  [FAIL] T04 fallo con $code"; fi
+echo "Pruebas de aceptación T01-T14 contra $API_URL"
 
-# T11: Bearer token es ID token
-echo "[T11] Uso de ID token como Bearer..."
-code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/v1/donations" \
-  -H "Authorization: Bearer $ID_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"projectId":"11111111-1111-1111-1111-111111111111","amountCents":5000}')
-if [ "$code" -eq 401 ] || [ "$code" -eq 403 ]; then echo "  [PASS] T11 OK (HTTP $code)"; else echo "  [FAIL] T11 fallo con $code"; fi
+echo "[T01] Visitante consulta el catálogo público"
+check T01 "catálogo público" "200" "$(status_of "$API_URL/v1/projects")"
 
-# T12: Gestor consulta historial de donante
-echo "[T12] Gestor consulta historial de donaciones..."
-code=$(curl -s -o /dev/null -w "%{http_code}" -X GET "$API_URL/v1/donations/me" \
-  -H "Authorization: Bearer $GESTOR_TOKEN")
-if [ "$code" -eq 403 ] || [ "$code" -eq 404 ]; then echo "  [PASS] T12 OK (HTTP $code)"; else echo "  [FAIL] T12 fallo con $code"; fi
+echo "[T02] Solicitud protegida sin token (la rechaza el authorizer de API Gateway)"
+check T02 "donación sin token" "401" "$(status_of -X POST "$API_URL/v1/donations" \
+  -H "Content-Type: application/json" -d "{\"projectId\":\"$PLACEHOLDER_UUID\",\"amountCents\":5000}")"
 
-echo "======================================================================"
-echo "Ejecución de suite T01-T14 completada."
-echo "======================================================================"
+echo "[T03] Donante intenta crear un proyecto (escalación vertical)"
+if [ -n "$DONOR_TOKEN" ]; then
+  check T03 "donante crea proyecto" "403" "$(status_of -X POST "$API_URL/v1/projects" \
+    -H "Authorization: Bearer $DONOR_TOKEN" -H "Content-Type: application/json" \
+    -d '{"title":"Proyecto no autorizado","description":"Intento de un donante","goalAmountCents":500000}')"
+else skip T03 "falta DONOR_TOKEN"; fi
+
+echo "[T04] Monto inválido"
+if [ -n "$DONOR_TOKEN" ]; then
+  check T04 "monto 0" "400" "$(status_of -X POST "$API_URL/v1/donations" \
+    -H "Authorization: Bearer $DONOR_TOKEN" -H "Idempotency-Key: $(uuidgen 2>/dev/null || echo "$PLACEHOLDER_UUID")" \
+    -H "Content-Type: application/json" -d "{\"projectId\":\"$PLACEHOLDER_UUID\",\"amountCents\":0}")"
+else skip T04 "falta DONOR_TOKEN"; fi
+
+echo "[T05-T09] Idempotencia, concurrencia y BOLA"
+echo "  Cubiertas por test/integration (donationFlow, idempotencyConcurrency, bola) contra DynamoDB Local."
+
+echo "[T10] Permisos IAM mínimos"
+echo "  Comprobación estática: test/infra/iamMatrix.test.ts. La denegación real se documenta en evidence/t10-access-denied.md."
+
+echo "[T11] ID token usado como Bearer"
+if [ -n "$ID_TOKEN" ]; then
+  check T11 "ID token como credencial" "401|403" "$(status_of -X POST "$API_URL/v1/donations" \
+    -H "Authorization: Bearer $ID_TOKEN" -H "Content-Type: application/json" \
+    -d "{\"projectId\":\"$PLACEHOLDER_UUID\",\"amountCents\":5000}")"
+  check T11 "token alterado" "401" "$(status_of -X GET "$API_URL/v1/donations/me" \
+    -H "Authorization: Bearer ${DONOR_TOKEN:-x}tampered")"
+else skip T11 "falta ID_TOKEN"; fi
+
+echo "[T12] Gestor consulta el historial de donaciones de un donante"
+if [ -n "$GESTOR_TOKEN" ]; then
+  check T12 "gestor en /donations/me" "403" "$(status_of -X GET "$API_URL/v1/donations/me" \
+    -H "Authorization: Bearer $GESTOR_TOKEN")"
+else skip T12 "falta GESTOR_TOKEN"; fi
+
+echo "[T13] Sesión revocada en una acción sensible"
+echo "  Procedimiento manual: revocar el refresh token del auditor y llamar GET /v1/audit con el access token aún vigente."
+if [ -n "$AUDITOR_TOKEN" ]; then
+  echo "  Estado actual del token del auditor: HTTP $(status_of -X GET "$API_URL/v1/audit" -H "Authorization: Bearer $AUDITOR_TOKEN") (200 activo, 401 revocado)"
+else skip T13 "falta AUDITOR_TOKEN"; fi
+
+echo "[T14] Inicio de sesión sin segundo factor"
+echo "  Procedimiento manual: iniciar sesión en el Hosted UI con un usuario sin TOTP; debe pedir el enrolamiento antes de emitir tokens."
+echo "  La configuración (MfaConfiguration ON, solo TOTP) la verifica test/infra/mfa.test.ts."
+
+echo
+if [ "$failures" -eq 0 ]; then
+  echo "Todas las comprobaciones ejecutadas pasaron."
+else
+  echo "$failures comprobación(es) fallaron."
+  exit 1
+fi

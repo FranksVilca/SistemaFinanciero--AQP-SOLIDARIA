@@ -1,0 +1,20 @@
+node_modules/
+dist/
+build/
+coverage/
+.aws-sam/
+package-lock.json
+# Formatted when each file is touched (see specs/002-zta-hardening/followups.md)
+frontend/
+# CloudFormation tags are not formatted by Prettier
+infra/
+docs/
+specs/
+evidence/
+.specify/
+.claude/
+.agents/
+# Documents and workflow files keep their hand-written layout
+*.md
+tsconfig*.json
+.github/

@@ -15,9 +15,20 @@ interface AuditEvent {
   outcome: "SUCCESS" | "DENIED" | "FAILED";
 }
 
+const ALL_EVENT_TYPES = "";
+
+// Event types recorded by the backend (backend/src/shared/constants.ts).
+const AUDIT_EVENT_TYPES = [
+  "AUTHZ_DECISION",
+  "PROJECT_CREATED",
+  "PROJECT_PUBLISHED",
+  "DONATION_CREATED",
+  "DONATION_TRANSITIONED",
+];
+
 export const AuditorPage: React.FC = () => {
   const { user, roles } = useAuth();
-  const [eventType, setEventType] = useState("PROJECT_LIFECYCLE");
+  const [eventType, setEventType] = useState(ALL_EVENT_TYPES);
 
   const isAuditor = roles.includes("AUDITOR");
 
@@ -30,7 +41,7 @@ export const AuditorPage: React.FC = () => {
   } = useQuery({
     queryKey: ["audit-events", eventType, user?.access_token],
     queryFn: () =>
-      apiFetch<AuditEvent[]>(`/audit?eventType=${encodeURIComponent(eventType)}`, {
+      apiFetch<AuditEvent[]>(eventType ? `/audit?eventType=${encodeURIComponent(eventType)}` : "/audit", {
         token: user?.access_token,
       }),
     enabled: Boolean(isAuditor && user?.access_token),
@@ -65,9 +76,12 @@ export const AuditorPage: React.FC = () => {
             onChange={(e) => setEventType(e.target.value)}
             className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
           >
-            <option value="PROJECT_LIFECYCLE">PROJECT_LIFECYCLE</option>
-            <option value="DONATION_LIFECYCLE">DONATION_LIFECYCLE</option>
-            <option value="SECURITY_ALERT">SECURITY_ALERT</option>
+            <option value={ALL_EVENT_TYPES}>Todos los eventos</option>
+            {AUDIT_EVENT_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
           </select>
 
           <button

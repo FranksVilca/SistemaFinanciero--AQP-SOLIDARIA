@@ -1,53 +1,25 @@
-import { docClient, TABLE_NAMES, QueryCommand } from "../shared/dynamo.js";
-import { buildSuccessResponse, buildErrorResponse, ApiResponse } from "../shared/response.js";
-import { extractAuthClaims, enforceAuthz } from "../authz/evaluateAuthz.js";
-import { logInfo, logError } from "../shared/logger.js";
+import { requirePrincipal, withAuth } from "../authz/withAuth.js";
+import { AUTHZ_ACTIONS } from "../shared/constants.js";
+import { docClient, QueryCommand, TABLE_NAMES } from "../shared/dynamo.js";
+import { logInfo } from "../shared/logger.js";
+import { buildSuccessResponse } from "../shared/response.js";
 
-export async function handler(event: {
-  requestContext?: {
-    requestId?: string;
-    authorizer?: {
-      jwt?: {
-        claims?: Record<string, unknown>;
-      };
-    };
-  };
-}): Promise<ApiResponse> {
-  const requestId = event.requestContext?.requestId || `req-${Date.now()}`;
-  logInfo("Consultando historial de donaciones del donante", { requestId, action: "ViewMyDonations" });
+export const handler = withAuth(
+  async (context) => {
+    const donorSub = requirePrincipal(context).sub;
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: TABLE_NAMES.donations,
+        IndexName: "donorSub-createdAt-index",
+        KeyConditionExpression: "donorSub = :sub",
+        ExpressionAttributeValues: { ":sub": donorSub },
+        ScanIndexForward: false,
+      })
+    );
 
-  try {
-    const principal = extractAuthClaims(event);
-    await enforceAuthz({
-      principal,
-      action: "CreateDonation", // Requires DONANTE role
-      resourceType: "Donation",
-    });
-
-    const donorSub = principal!.sub;
-
-    const command = new QueryCommand({
-      TableName: TABLE_NAMES.donations,
-      IndexName: "donorSub-createdAt-index",
-      KeyConditionExpression: "donorSub = :sub",
-      ExpressionAttributeValues: {
-        ":sub": donorSub,
-      },
-      ScanIndexForward: false, // Descending by createdAt
-    });
-
-    const result = await docClient.send(command);
-    const donations = result.Items || [];
-
-    logInfo("Historial recuperado exitosamente", {
-      requestId,
-      donorSub,
-      count: donations.length,
-    });
-
-    return buildSuccessResponse(donations, 200);
-  } catch (err) {
-    logError("Error al consultar historial", err, { requestId });
-    return buildErrorResponse(err, requestId);
-  }
-}
+    const donations = result.Items ?? [];
+    logInfo("Donor history returned", { requestId: context.requestId, count: donations.length });
+    return buildSuccessResponse(donations);
+  },
+  { action: AUTHZ_ACTIONS.viewMyDonations, resourceType: "Donation" }
+);

@@ -16,9 +16,51 @@ Parameters:
     Type: String
     Default: aqp-solidaria-auth
     Description: Prefijo para el dominio de Cognito Hosted UI.
+  EnablePitr:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >
+      Recuperación a un punto en el tiempo de DynamoDB (no es gratuita, cuesta centavos con estos volúmenes).
+      En el stage production siempre está activa.
+  EnableCloudTrail:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >
+      Crea un trail de eventos de gestión (la primera copia es gratuita). Poner en false si la cuenta ya tiene uno.
+  EnableGuardDuty:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >
+      Activa GuardDuty. Incluye 30 días de prueba gratuita por región; después se cobra. Apagar o aceptar el costo
+      al terminar la prueba. Confirmar en Billing que el tipo de cuenta permite la prueba.
+  EnableSecurityHub:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >
+      Activa Security Hub sin estándares por defecto. Verificar en la consola de la cuenta si aplica una prueba
+      de 30 días antes de activarlo; después puede cobrarse.
 
 Conditions:
   IsAcademicStage: !Equals [!Ref StageName, 'academic']
+  IsProductionStage: !Equals [!Ref StageName, 'production']
+  UsePitr: !Or
+    - !Equals [!Ref EnablePitr, 'true']
+    - !Condition IsProductionStage
+  CloudTrailEnabled: !Equals [!Ref EnableCloudTrail, 'true']
+  GuardDutyEnabled: !Equals [!Ref EnableGuardDuty, 'true']
+  SecurityHubEnabled: !Equals [!Ref EnableSecurityHub, 'true']
 
 Globals:
   Function:
@@ -26,6 +68,9 @@ Globals:
     Timeout: 10
     MemorySize: 256
     Tracing: Disabled
+    LoggingConfig:
+      LogFormat: JSON
+      LogGroup: !Ref FunctionLogGroup
     Environment:
       Variables:
         STAGE: !Ref StageName
@@ -33,17 +78,23 @@ Globals:
         DONATIONS_TABLE: !Ref DonationsTable
         IDEMPOTENCY_TABLE: !Ref IdempotencyTable
         AUDIT_TABLE: !Ref AuditTable
+        COGNITO_USERINFO_URL: !Sub "https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com/oauth2/userInfo"
         NODE_OPTIONS: "--enable-source-maps"
 
 Resources:
   # ============================================================================
   # PERSISTENCIA: DynamoDB (On-Demand, Free Plan)
+  # Projects, Donations y Audit: protección contra borrado solo en production
+  # (para que `sam delete` limpie el stage académico) y PITR bajo parámetro.
   # ============================================================================
   ProjectsTable:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Sub "aqp-projects-${StageName}"
       BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: !If [IsProductionStage, true, false]
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !If [UsePitr, true, false]
       AttributeDefinitions:
         - AttributeName: projectId
           AttributeType: S
@@ -69,6 +120,9 @@ Resources:
     Properties:
       TableName: !Sub "aqp-donations-${StageName}"
       BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: !If [IsProductionStage, true, false]
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !If [UsePitr, true, false]
       AttributeDefinitions:
         - AttributeName: donationId
           AttributeType: S
@@ -104,21 +158,144 @@ Resources:
         AttributeName: expiresAt
         Enabled: true
 
+  # Audit: una partición por día UTC (auditDay) para listar de más reciente a más antiguo con un Query por día.
+  # Cambiar esta clave reemplaza la tabla al desplegar (aceptable mientras no haya datos reales).
   AuditTable:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Sub "aqp-audit-${StageName}"
       BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: !If [IsProductionStage, true, false]
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !If [UsePitr, true, false]
       AttributeDefinitions:
-        - AttributeName: eventType
+        - AttributeName: auditDay
           AttributeType: S
         - AttributeName: timestamp#eventId
           AttributeType: S
       KeySchema:
-        - AttributeName: eventType
+        - AttributeName: auditDay
           KeyType: HASH
         - AttributeName: timestamp#eventId
           KeyType: RANGE
+      # Defensa en profundidad: aunque se ampliaran los permisos IAM, los roles de las funciones no pueden
+      # editar ni borrar eventos. El ARN se construye con el nombre fijo para evitar una referencia circular.
+      ResourcePolicy:
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Sid: DenyAuditMutationFromFunctionRoles
+              Effect: Deny
+              Principal: "*"
+              Action:
+                - dynamodb:UpdateItem
+                - dynamodb:DeleteItem
+                - dynamodb:BatchWriteItem
+              Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/aqp-audit-${StageName}"
+              Condition:
+                ArnLike:
+                  aws:PrincipalArn: !Sub "arn:aws:iam::${AWS::AccountId}:role/${AWS::StackName}-*FunctionRole-*"
+
+  # ============================================================================
+  # TELEMETRÍA: logs con retención de 14 días y CloudTrail definidos en el IaC
+  # ============================================================================
+  FunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aqp-solidaria/${StageName}/functions"
+      RetentionInDays: 14
+
+  ApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aqp-solidaria/${StageName}/api-access"
+      RetentionInDays: 14
+
+  CloudTrailLogBucket:
+    Type: AWS::S3::Bucket
+    Condition: CloudTrailEnabled
+    Properties:
+      BucketName: !Sub "aqp-solidaria-trail-${StageName}-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireTrailLogs
+            Status: Enabled
+            ExpirationInDays: 90
+
+  CloudTrailLogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: CloudTrailEnabled
+    Properties:
+      Bucket: !Ref CloudTrailLogBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AWSCloudTrailAclCheck
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt CloudTrailLogBucket.Arn
+            Condition:
+              StringEquals:
+                aws:SourceArn: !Sub "arn:aws:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/aqp-solidaria-${StageName}"
+          - Sid: AWSCloudTrailWrite
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "${CloudTrailLogBucket.Arn}/AWSLogs/${AWS::AccountId}/*"
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+                aws:SourceArn: !Sub "arn:aws:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/aqp-solidaria-${StageName}"
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt CloudTrailLogBucket.Arn
+              - !Sub "${CloudTrailLogBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  CloudTrail:
+    Type: AWS::CloudTrail::Trail
+    Condition: CloudTrailEnabled
+    DependsOn: CloudTrailLogBucketPolicy
+    Properties:
+      TrailName: !Sub "aqp-solidaria-${StageName}"
+      S3BucketName: !Ref CloudTrailLogBucket
+      IsLogging: true
+      IncludeGlobalServiceEvents: true
+      IsMultiRegionTrail: false
+      EnableLogFileValidation: true
+
+  # ============================================================================
+  # DETECCIÓN OPCIONAL con pruebas de 30 días (apagadas por defecto, ver Parameters)
+  # ============================================================================
+  GuardDutyDetector:
+    Type: AWS::GuardDuty::Detector
+    Condition: GuardDutyEnabled
+    Properties:
+      Enable: true
+      FindingPublishingFrequency: SIX_HOURS
+
+  SecurityHubHub:
+    Type: AWS::SecurityHub::Hub
+    Condition: SecurityHubEnabled
+    Properties:
+      EnableDefaultStandards: false
 
   # ============================================================================
   # IDENTIDAD: Amazon Cognito User Pool + PKCE + TOTP MFA
@@ -131,7 +308,8 @@ Resources:
         - email
       UsernameAttributes:
         - email
-      MfaConfiguration: "OPTIONAL"
+      # Cognito applies MFA per pool, not per group, so every user (donors included) enrolls TOTP once.
+      MfaConfiguration: "ON"
       EnabledMfas:
         - SOFTWARE_TOKEN_MFA
       Policies:
@@ -154,14 +332,20 @@ Resources:
     Properties:
       GroupName: GESTOR
       UserPoolId: !Ref CognitoUserPool
-      Description: Grupo para gestores de proyectos (MFA TOTP obligatorio)
+      Description: Grupo para gestores de proyectos (el MFA TOTP es obligatorio para todo el pool)
 
   CognitoGroupAuditor:
     Type: AWS::Cognito::UserPoolGroup
     Properties:
       GroupName: AUDITOR
       UserPoolId: !Ref CognitoUserPool
-      Description: Grupo para auditores de seguridad (MFA TOTP obligatorio)
+      Description: Grupo para auditores de seguridad (el MFA TOTP es obligatorio para todo el pool)
+
+  CognitoUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref CognitoDomainPrefix
+      UserPoolId: !Ref CognitoUserPool
 
   CognitoResourceServer:
     Type: AWS::Cognito::UserPoolResourceServer
@@ -181,6 +365,7 @@ Resources:
 
   CognitoUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
+    DependsOn: CognitoResourceServer
     Properties:
       ClientName: !Sub "aqp-solidaria-spa-${StageName}"
       UserPoolId: !Ref CognitoUserPool
@@ -205,10 +390,19 @@ Resources:
         - api/donations.write
         - api/donations.read
         - api/audit.read
-      CallbackURLs:
-        - http://localhost:3000/auth/callback
-      LogoutURLs:
-        - http://localhost:3000
+      SupportedIdentityProviders:
+        - COGNITO
+      # The deployed SPA is served by CloudFront; localhost is only allowed in the academic stage.
+      CallbackURLs: !If
+        - IsAcademicStage
+        - - !Sub "https://${CloudFrontDistribution.DomainName}/auth/callback"
+          - http://localhost:3000/auth/callback
+        - - !Sub "https://${CloudFrontDistribution.DomainName}/auth/callback"
+      LogoutURLs: !If
+        - IsAcademicStage
+        - - !Sub "https://${CloudFrontDistribution.DomainName}"
+          - http://localhost:3000
+        - - !Sub "https://${CloudFrontDistribution.DomainName}"
 
   # ============================================================================
   # API GATEWAY: HTTP API con JWT Authorizer (PEP Zero Trust)
@@ -218,8 +412,11 @@ Resources:
     Properties:
       StageName: !Ref StageName
       CorsConfiguration:
-        AllowOrigins:
-          - "*"
+        AllowOrigins: !If
+          - IsAcademicStage
+          - - !Sub "https://${CloudFrontDistribution.DomainName}"
+            - http://localhost:3000
+          - - !Sub "https://${CloudFrontDistribution.DomainName}"
         AllowHeaders:
           - Content-Type
           - Authorization
@@ -229,6 +426,23 @@ Resources:
           - POST
           - PATCH
           - OPTIONS
+      AccessLogSettings:
+        DestinationArn: !GetAtt ApiAccessLogGroup.Arn
+        Format: >-
+          {"requestId":"$context.requestId","routeKey":"$context.routeKey","status":"$context.status","sourceIp":"$context.identity.sourceIp","authorizerError":"$context.authorizer.error","integrationError":"$context.integrationErrorMessage","responseLatencyMs":"$context.responseLatency"}
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 50
+        ThrottlingRateLimit: 25
+      RouteSettings:
+        "GET /v1/projects":
+          ThrottlingBurstLimit: 20
+          ThrottlingRateLimit: 10
+        "GET /v1/projects/{projectId}":
+          ThrottlingBurstLimit: 20
+          ThrottlingRateLimit: 10
+        "GET /v1/projects/{projectId}/stats":
+          ThrottlingBurstLimit: 20
+          ThrottlingRateLimit: 10
       Auth:
         DefaultAuthorizer: CognitoJwtAuthorizer
         Authorizers:
@@ -241,6 +455,8 @@ Resources:
 
   # ============================================================================
   # LAMBDA FUNCTIONS (Módulo Projects)
+  # Cada función tiene su propio rol con solo las acciones de
+  # specs/002-zta-hardening/contracts/iam-permissions-matrix.md
   # ============================================================================
   ListProjectsFunction:
     Type: AWS::Serverless::Function
@@ -248,8 +464,11 @@ Resources:
       CodeUri: ../backend/dist/
       Handler: projects/listProjects.handler
       Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref ProjectsTable
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub "${ProjectsTable.Arn}/index/status-createdAt-index"
       Events:
         PublicGet:
           Type: HttpApi
@@ -266,8 +485,11 @@ Resources:
       CodeUri: ../backend/dist/
       Handler: projects/getProject.handler
       Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref ProjectsTable
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt ProjectsTable.Arn
       Events:
         PublicGet:
           Type: HttpApi
@@ -284,8 +506,11 @@ Resources:
       CodeUri: ../backend/dist/
       Handler: projects/getProjectStats.handler
       Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref ProjectsTable
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt ProjectsTable.Arn
       Events:
         PublicGet:
           Type: HttpApi
@@ -302,10 +527,13 @@ Resources:
       CodeUri: ../backend/dist/
       Handler: projects/createProject.handler
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ProjectsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref AuditTable
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource:
+                - !GetAtt ProjectsTable.Arn
+                - !GetAtt AuditTable.Arn
       Events:
         ProtectedPost:
           Type: HttpApi
@@ -323,10 +551,14 @@ Resources:
       CodeUri: ../backend/dist/
       Handler: projects/publishProject.handler
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ProjectsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref AuditTable
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:UpdateItem
+              Resource: !GetAtt ProjectsTable.Arn
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AuditTable.Arn
       Events:
         ProtectedPatch:
           Type: HttpApi
@@ -347,14 +579,21 @@ Resources:
       CodeUri: ../backend/dist/
       Handler: donations/createDonation.handler
       Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref ProjectsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref DonationsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref IdempotencyTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref AuditTable
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt ProjectsTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:GetItem
+              Resource:
+                - !GetAtt DonationsTable.Arn
+                - !GetAtt IdempotencyTable.Arn
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AuditTable.Arn
       Events:
         ProtectedPost:
           Type: HttpApi
@@ -373,12 +612,19 @@ Resources:
       CodeUri: ../backend/dist/
       Handler: donations/simulateDonation.handler
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ProjectsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref DonationsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref AuditTable
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:UpdateItem
+              Resource: !GetAtt ProjectsTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt DonationsTable.Arn
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AuditTable.Arn
       Events:
         ProtectedPost:
           Type: HttpApi
@@ -396,8 +642,14 @@ Resources:
       CodeUri: ../backend/dist/
       Handler: donations/getMyDonations.handler
       Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref DonationsTable
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub "${DonationsTable.Arn}/index/donorSub-createdAt-index"
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AuditTable.Arn
       Events:
         ProtectedGet:
           Type: HttpApi
@@ -418,8 +670,13 @@ Resources:
       CodeUri: ../backend/dist/
       Handler: audit/getAuditEvents.handler
       Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref AuditTable
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:PutItem
+              Resource: !GetAtt AuditTable.Arn
       Events:
         ProtectedGet:
           Type: HttpApi
@@ -459,8 +716,9 @@ Resources:
       ResponseHeadersPolicyConfig:
         Name: !Sub "aqp-security-headers-${StageName}"
         SecurityHeadersConfig:
+          # connect-src allows the API (execute-api) and the Cognito domain used by the sign-in code exchange.
           ContentSecurityPolicy:
-            ContentSecurityPolicy: "default-src 'self'; connect-src 'self' https://*.amazonaws.com; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none';"
+            ContentSecurityPolicy: !Sub "default-src 'self'; connect-src 'self' https://*.amazonaws.com https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none';"
             Override: true
           StrictTransportSecurity:
             AccessControlMaxAgeSec: 31536000
@@ -520,3 +778,9 @@ Outputs:
   UserPoolClientId:
     Description: ID del cliente SPA de Cognito
     Value: !Ref CognitoUserPoolClient
+  CognitoHostedUiUrl:
+    Description: URL base del dominio de Cognito (Hosted UI y endpoints OAuth)
+    Value: !Sub "https://${CognitoUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com"
+  FrontendUrl:
+    Description: URL del frontend servido por CloudFront
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}"

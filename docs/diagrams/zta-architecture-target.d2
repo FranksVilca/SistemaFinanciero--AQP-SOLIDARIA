@@ -36,7 +36,7 @@ front: "ENTREGA DEL FRONTEND (solo archivos estáticos)" {
 
 pa: "PA · administrador de políticas (identidad)" {
   class: zone-blue
-  cognito: "Amazon Cognito\n★ MFA TOTP OBLIGATORIO (gestor y auditor)\nPKCE · tokens de vida corta" { class: svc; shape: image; icon: ${icons}/Security%2C%20Identity%2C%20%26%20Compliance/Amazon-Cognito.svg }
+  cognito: "Amazon Cognito\n★ MFA TOTP OBLIGATORIO (todo el pool)\nPKCE · tokens de vida corta" { class: svc; shape: image; icon: ${icons}/Security%2C%20Identity%2C%20%26%20Compliance/Amazon-Cognito.svg }
 }
 
 pep: "PEP · punto de aplicación (verifica CADA solicitud)" {
@@ -70,6 +70,7 @@ tel: "TELEMETRÍA · ★ definida en el IaC" {
   class: zone-grey
   cw: "CloudWatch Logs\nJSON + requestId\n★ retención 14 días en el template" { class: svc; shape: image; icon: ${icons}/Management%20%26%20Governance/Amazon-CloudWatch.svg }
   ct: "CloudTrail\n★ definido en el template" { class: svc; shape: image; icon: ${icons}/Management%20%26%20Governance/AWS-CloudTrail.svg }
+  gd: "GuardDuty · Security Hub\n★ opcionales: prueba de 30 días\n(parámetros apagados por defecto)" { shape: rectangle; style: { fill: "#FFFFFF"; stroke: "#6B7280"; stroke-width: 2; stroke-dash: 4; border-radius: 10; font-size: 16 } }
 }
 
 ci: "★ CI (GitHub Actions)\ntests de integración con DynamoDB emulado\nmatriz de roles + BOLA + idempotencia\ncfn-lint / checkov sobre el template" {

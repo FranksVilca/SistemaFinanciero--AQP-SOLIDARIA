@@ -1,60 +1,64 @@
 # Reporte de Evidencia de Ejecución de Pruebas (T01 - T14)
 
 **Curso:** Tópicos Avanzados en Ingeniería de Software — EPIS, UNSA  
-**Fecha:** 2026-11-06  
-**Resultado Global:** **11 Archivos de Prueba Superados / 37 Pruebas Aprobadas (100% PASS, 0 ERRORES)**  
-**Framework de Pruebas:** Vitest 3.2.7 en Node.js v24.13.0  
+**Fecha:** 2026-11-08 (reemplaza el reporte del 2026-11-06, que se apoyaba en pruebas con DynamoDB simulado)  
+**Framework de pruebas:** Vitest 3.2.7 en Node.js v24  
+**Base de datos de las pruebas de integración:** DynamoDB Local (`amazon/dynamodb-local`)
 
 ---
 
-## 1. Resumen de Ejecución de la Suite Automatizada
+## 1. Resumen de ejecución
 
-```text
- RUN  v3.2.7 backend/
+| Suite | Comando | Archivos | Pruebas | Resultado |
+|---|---|---|---|---|
+| Unitarias (sin base de datos) | `npm run test` | 4 | 30 | PASS |
+| Integración (DynamoDB Local) | `npm run test:integration` | 9 | 39 | PASS |
+| Infraestructura (`infra/template.yaml`, etapas `academic` y `production`) | `npm run test:infra` | 8 | 145 | PASS |
+| `cfn-lint` sobre `infra/template.yaml` | `cfn-lint` | — | — | PASS (sin hallazgos) |
+| `checkov` (omisiones justificadas en `.checkov.yaml`) | `checkov --config-file .checkov.yaml` | — | 38 verificaciones | PASS |
+| ESLint (complejidad ≤ 10, función ≤ 50 líneas, sin `any`) | `npm run lint` | — | — | 0 errores; 16 advertencias en el frontend (ver `specs/002-zta-hardening/followups.md`) |
+| Prettier | `npm run format:check` | — | — | PASS |
 
- ✓ test/projects.test.ts (4 tests)
- ✓ test/authz.test.ts (6 tests)
- ✓ test/mfa.test.ts (1 test)
- ✓ test/projectManagement.test.ts (6 tests)
- ✓ test/donationValidation.test.ts (4 tests)
- ✓ test/idempotency.test.ts (3 tests)
- ✓ test/concurrency.test.ts (1 test)
- ✓ test/donationState.test.ts (3 tests)
- ✓ test/bola.test.ts (2 tests)
- ✓ test/audit.test.ts (3 tests)
- ✓ test/cedarEquivalence.test.ts (4 tests)
-
- Test Files  11 passed (11)
-      Tests  37 passed (37)
-```
+Por qué cambió la suite: las 37 pruebas anteriores simulaban DynamoDB y no detectaron que confirmar una donación devolvía HTTP 500 (expresión de actualización inválida, hallazgo H1). Las pruebas de integración actuales ejecutan los handlers contra una base de datos real y reproducen ese fallo si se reintroduce (ver [ci-negative-checks.md](ci-negative-checks.md)).
 
 ---
 
-## 2. Matriz de Cobertura y Trazabilidad con Casos de Prueba T01 - T14
+## 2. Matriz de cobertura y trazabilidad con T01 - T14
 
-| ID Prueba | Escenario de Prueba | Resultado Obtenido | Trazabilidad |
+| ID | Escenario | Estado | Evidencia |
 |---|---|:---:|---|
-| **T01** | Visitante consulta proyectos públicos; los borradores quedan excluidos | **PASS** (HTTP 200, array seguro sin PII ni borradores) | `test/projects.test.ts` $\to$ CA-01.1, CA-01.2 |
-| **T02** | Solicitud protegida sin token Bearer | **PASS** (HTTP 401 UnauthorizedError) | `test/authz.test.ts` $\to$ CA-03.2 |
-| **T03** | Donante intenta crear proyecto (Escalación vertical) | **PASS** (HTTP 403 ForbiddenError) | `test/projectManagement.test.ts` $\to$ CA-04.1 |
-| **T04** | Donante envía monto inválido ($\le 0$, $> 100000$ o flotante) | **PASS** (HTTP 400 ValidationError) | `test/donationValidation.test.ts` $\to$ CA-05.2 |
-| **T05** | Donante registra intención válida con `Idempotency-Key` | **PASS** (HTTP 201 Created, estado `PENDIENTE_SIMULACION`) | `test/idempotency.test.ts` $\to$ CA-05.1 |
-| **T06** | Reenvío de clave con payload idéntico (Idempotencia) | **PASS** (HTTP 201, respuesta original rejugada sin duplicado) | `test/idempotency.test.ts` $\to$ CA-05.4 |
-| **T07** | Reutilización de clave con payload modificado | **PASS** (HTTP 409 ConflictError) | `test/idempotency.test.ts` $\to$ CA-05.4 |
-| **T08** | 10 confirmaciones concurrentes en paralelo | **PASS** (Exactamente 1 HTTP 200 y 9 HTTP 409; un solo incremento) | `test/concurrency.test.ts` $\to$ CA-06.2, CA-NF04.1 |
-| **T09** | Donante consulta o simula donación ajena (BOLA) | **PASS** (HTTP 403 ForbiddenError sin filtrar datos) | `test/authz.test.ts` $\to$ CA-07.2 |
-| **T10** | Función de listado con mínimo privilegio IAM en DynamoDB | **PASS** (Acceso verificado por política read-only en SAM) | `infra/template.yaml` $\to$ CA-NF03.1 |
-| **T11** | Uso de ID token o token alterado en lugar de access token | **PASS** (HTTP 401/403 por authorizer scopes) | `test/authz.test.ts` $\to$ CA-03.2, CA-NF02.1 |
-| **T12** | Gestor consulta historial privado de un donante | **PASS** (HTTP 403 ForbiddenError) | `test/bola.test.ts` $\to$ CA-04.2 |
-| **T13** | Token revocado usado antes de expirar | **PASS** (Aceptado localmente hasta TTL $\le 15$ min; limitación Zero Trust documentada) | `docs/threat-model.md` $\to$ CA-03.4 |
-| **T14** | Usuario GESTOR/AUDITOR inicia sesión sin 2do factor | **PASS** (Desafío `SOFTWARE_TOKEN_MFA` exigido; sin emisión de tokens) | `test/mfa.test.ts` $\to$ CA-11.2 |
+| **T01** | Visitante consulta proyectos públicos; los borradores quedan excluidos y no se filtra identidad de donantes | **PASS** | `test/integration/projects.test.ts` |
+| **T02** | Solicitud protegida sin identidad | **PASS** (401) | `test/integration/authzMatrix.test.ts`, `test/withAuth.test.ts`, `test/authz.test.ts` |
+| **T03** | Donante intenta crear proyecto (escalación vertical) | **PASS** (403) | `test/integration/authzMatrix.test.ts`; el rechazo queda auditado en `test/integration/audit.test.ts` |
+| **T04** | Monto inválido, clave ausente o no UUID, JSON inválido | **PASS** (400, sin stack) | `test/integration/donationFlow.test.ts` |
+| **T05** | Intención de donación válida con `Idempotency-Key` | **PASS** (201, `PENDIENTE_SIMULACION`) | `test/integration/donationFlow.test.ts` |
+| **T06** | Reenvío con la misma clave y el mismo cuerpo | **PASS** (misma donación, sin duplicado) | `test/integration/donationFlow.test.ts` |
+| **T07** | Misma clave con monto distinto | **PASS** (409) | `test/integration/donationFlow.test.ts` |
+| **T08** | 10 confirmaciones concurrentes de la misma donación | **PASS** (1 respuesta 200, 9 respuestas 409, un solo incremento) | `test/integration/idempotencyConcurrency.test.ts` |
+| **T09** | Otro donante consulta o simula una donación ajena (BOLA) | **PASS** (403, estado sin cambios) | `test/integration/bola.test.ts` |
+| **T10** | Permisos IAM mínimos por función | **Parcial**: la comprobación estática PASA; la denegación real en AWS está **PENDIENTE** | `test/infra/iamMatrix.test.ts`, `test/infra/auditTable.test.ts`; procedimiento en [t10-access-denied.md](t10-access-denied.md) |
+| **T11** | ID token o token alterado en lugar de access token | **PENDIENTE** (requiere API Gateway y Cognito reales). La configuración de audiencia y scopes se verifica en `test/infra/mfa.test.ts` | `evidence/` tras el despliegue |
+| **T12** | Gestor consulta historial o acciones privadas de un donante | **PASS** (403) | `test/integration/bola.test.ts`, `test/integration/authzMatrix.test.ts` |
+| **T13** | Token revocado usado antes de expirar | **Parcial**: la revalidación contra `userInfo` se prueba con un servidor de prueba (sesión revocada, tiempo agotado y servicio inaccesible dan 401); con Cognito real está **PENDIENTE** | `test/integration/sessionCheck.test.ts`; `docs/threat-model.md` |
+| **T14** | Usuario sin segundo factor no obtiene tokens | **Parcial**: `MfaConfiguration: ON` con solo TOTP se verifica en el template; el comportamiento del inicio de sesión está **PENDIENTE** en Cognito real | `test/infra/mfa.test.ts` |
 
 ---
 
-## 3. Pruebas de Equivalencia de Cedar y Amazon Verified Permissions (HU-12)
+## 3. Evidencia pendiente de una cuenta de AWS real
 
-En `test/cedarEquivalence.test.ts`, se comprobó que el evaluador embebido en TypeScript (`EmbeddedPolicyAuthorizer`) y el evaluador externalizado en Cedar (`VerifiedPermissionsAuthorizer`) producen **decisiones 100% idénticas**:
-- Creación no autorizada de proyectos (T03): Ambos deciden **DENY**.
-- Consulta horizontal ajena BOLA (T09): Ambos deciden **DENY**.
-- Acceso de gestor a donación privada (T12): Ambos deciden **DENY**.
-- Operaciones legítimas con roles y propiedad válida: Ambos deciden **ALLOW**.
+No puede producirse con DynamoDB Local ni con un emulador:
+
+1. Rechazo de tokens falsos, vencidos o ID token por el JWT authorizer de API Gateway (T11).
+2. Inicio de sesión con segundo factor obligatorio en Cognito (T14) y enrolamiento de TOTP.
+3. `AccessDeniedException` por permisos IAM insuficientes (T10).
+4. Rechazo de una sesión revocada por el endpoint `userInfo` de Cognito (T13).
+5. Que la política de seguridad de contenido (CSP) no bloquee el intercambio de código con el dominio de Cognito.
+6. `DeletionProtectionEnabled` y PITR activos en producción.
+
+Cada punto tiene su procedimiento en `specs/002-zta-hardening/quickstart.md`, sección 4.
+
+---
+
+## 4. Motor de políticas
+
+El único motor de políticas activo es el módulo embebido `authz` (`EmbeddedPolicyAuthorizer`). Amazon Verified Permissions con Cedar está planificado como fase 2: las políticas de `policies/` son documentación, no se aplican, y el adaptador y la prueba de equivalencia que existían se retiraron por no estar conectados a ningún flujo.

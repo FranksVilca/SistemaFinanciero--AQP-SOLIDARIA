@@ -90,7 +90,7 @@ Requirements CA-05.1, CA-05.4, CA-06.2, CA-NF04.1 and test case T08 dictate:
        - Expression attribute values: `:newStatus = 'CONFIRMADA_SIMULADA'`, `:pendingStatus = 'PENDIENTE_SIMULACION'`, `:sub = donorSub`.
      - Item 2 (only if `CONFIRMADA_SIMULADA`): Update `Projects` table:
        - `Key: { projectId }`
-       - `UpdateExpression: "ADD confirmedAmountCents :amount, updatedAt = :now"`
+       - `UpdateExpression: "ADD confirmedAmountCents :amount SET updatedAt = :now"`
        - `ConditionExpression: "attribute_exists(projectId)"`
        - Expression attribute values: `:amount = donation.amountCents`.
    - **Concurrency Guarantee**:

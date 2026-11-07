@@ -1,136 +1,74 @@
-import { ForbiddenError, UnauthorizedError } from "../shared/errors.js";
+import { AUTHZ_ACTIONS, PUBLIC_ACTIONS, ROLES, type AuthzAction } from "../shared/constants.js";
+import { logError } from "../shared/logger.js";
+import type { AuthPrincipal } from "./claims.js";
 
-export type UserRole = "DONANTE" | "GESTOR" | "AUDITOR";
-
-export interface AuthPrincipal {
-  sub: string;
-  email?: string;
-  groups: string[];
-}
+export type ResourceType = "Project" | "Donation" | "AuditEvent";
 
 export interface AuthzContext {
   principal?: AuthPrincipal;
-  action:
-    | "ListProjects"
-    | "ViewProject"
-    | "CreateProject"
-    | "PublishProject"
-    | "CreateDonation"
-    | "SimulateDonation"
-    | "ViewDonation"
-    | "ViewAudit";
-  resourceType: "Project" | "Donation" | "AuditEvent";
+  action: AuthzAction;
+  resourceType: ResourceType;
   resourceOwnerSub?: string;
+  /** When true the principal must own the resource; a missing owner denies access. */
+  requiresOwner?: boolean;
 }
 
 export interface PolicyAuthorizer {
   isAuthorized(context: AuthzContext): Promise<boolean>;
 }
 
+export type DenialReason = "UNAUTHENTICATED" | "ROLE" | "OWNER" | "ENGINE_ERROR" | "SESSION_REVOKED";
+
+export type AuthzDecision = { allowed: true } | { allowed: false; reason: DenialReason };
+
+const ROLE_BY_ACTION: Partial<Record<AuthzAction, string>> = {
+  [AUTHZ_ACTIONS.createProject]: ROLES.manager,
+  [AUTHZ_ACTIONS.publishProject]: ROLES.manager,
+  [AUTHZ_ACTIONS.createDonation]: ROLES.donor,
+  [AUTHZ_ACTIONS.simulateDonation]: ROLES.donor,
+  [AUTHZ_ACTIONS.viewMyDonations]: ROLES.donor,
+  [AUTHZ_ACTIONS.viewAudit]: ROLES.auditor,
+};
+
+function isPublicAction(action: AuthzAction): boolean {
+  return PUBLIC_ACTIONS.includes(action);
+}
+
+/** Embedded policy engine: role by action, plus ownership when the resource has an owner. */
 export class EmbeddedPolicyAuthorizer implements PolicyAuthorizer {
   async isAuthorized(context: AuthzContext): Promise<boolean> {
-    const { principal, action, resourceOwnerSub } = context;
+    const { principal, action, resourceOwnerSub, requiresOwner } = context;
+    if (isPublicAction(action)) return true;
+    if (!principal?.sub) return false;
 
-    // Public actions
-    if (action === "ListProjects" || action === "ViewProject") {
-      return true;
+    const requiredRole = ROLE_BY_ACTION[action];
+    if (!requiredRole || !principal.groups.includes(requiredRole)) return false;
+
+    if (requiresOwner || resourceOwnerSub !== undefined) {
+      return resourceOwnerSub === principal.sub;
     }
-
-    if (!principal || !principal.sub) {
-      return false;
-    }
-
-    const groups = principal.groups || [];
-
-    switch (action) {
-      case "CreateProject":
-      case "PublishProject":
-        return groups.includes("GESTOR");
-
-      case "CreateDonation":
-        return groups.includes("DONANTE");
-
-      case "SimulateDonation":
-      case "ViewDonation":
-        if (!groups.includes("DONANTE")) {
-          return false;
-        }
-        if (resourceOwnerSub && resourceOwnerSub !== principal.sub) {
-          return false;
-        }
-        return true;
-
-      case "ViewAudit":
-        return groups.includes("AUDITOR");
-
-      default:
-        return false;
-    }
+    return true;
   }
 }
 
 export const defaultAuthorizer: PolicyAuthorizer = new EmbeddedPolicyAuthorizer();
 
-export function getAuthorizer(): PolicyAuthorizer {
-  if (process.env.POLICY_ENGINE === "verified_permissions") {
-    try {
-      const { VerifiedPermissionsAuthorizer } = require("./cedarAdapter.js");
-      return new VerifiedPermissionsAuthorizer();
-    } catch {
-      return defaultAuthorizer;
-    }
-  }
-  return defaultAuthorizer;
+async function explainDenial(context: AuthzContext, authorizer: PolicyAuthorizer): Promise<DenialReason> {
+  if (!context.principal?.sub) return "UNAUTHENTICATED";
+  const withoutOwnership = { ...context, resourceOwnerSub: undefined, requiresOwner: false };
+  return (await authorizer.isAuthorized(withoutOwnership)) ? "OWNER" : "ROLE";
 }
 
-export function extractAuthClaims(event: {
-  requestContext?: {
-    authorizer?: {
-      jwt?: {
-        claims?: Record<string, unknown>;
-      };
-    };
-  };
-}): AuthPrincipal | undefined {
-  const claims = event.requestContext?.authorizer?.jwt?.claims;
-  if (!claims || !claims.sub) {
-    return undefined;
-  }
-
-  const sub = String(claims.sub);
-  const email = claims.email ? String(claims.email) : undefined;
-  
-  let groups: string[] = [];
-  const rawGroups = claims["cognito:groups"];
-  if (Array.isArray(rawGroups)) {
-    groups = rawGroups.map(String);
-  } else if (typeof rawGroups === "string") {
-    try {
-      const parsed = JSON.parse(rawGroups);
-      if (Array.isArray(parsed)) {
-        groups = parsed.map(String);
-      } else {
-        groups = [rawGroups];
-      }
-    } catch {
-      groups = rawGroups.replace(/[[\\]"]/g, "").split(",").map((g) => g.trim()).filter(Boolean);
-    }
-  }
-
-  return { sub, email, groups };
-}
-
-export async function enforceAuthz(
+/** Decides one request. Any failure of the engine denies access (fail closed). */
+export async function authorize(
   context: AuthzContext,
   authorizer: PolicyAuthorizer = defaultAuthorizer
-): Promise<void> {
-  const allowed = await authorizer.isAuthorized(context);
-  if (!allowed) {
-    if (!context.principal) {
-      throw new UnauthorizedError("Identidad no provista o token inválido");
-    }
-    throw new ForbiddenError(
-      `Acceso denegado: rol o permiso insuficiente para la acción ${context.action}`
-    );
+): Promise<AuthzDecision> {
+  try {
+    if (await authorizer.isAuthorized(context)) return { allowed: true };
+    return { allowed: false, reason: await explainDenial(context, authorizer) };
+  } catch (error) {
+    logError("Policy engine failure: denying access", error, { action: context.action });
+    return { allowed: false, reason: "ENGINE_ERROR" };
   }
 }

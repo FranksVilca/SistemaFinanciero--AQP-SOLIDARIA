@@ -6,28 +6,116 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 24
+
 jobs:
-  validate:
+  lint-format:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 24
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run linting
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: ESLint (complexity, function size, no-explicit-any)
         run: npm run lint
+      - name: Prettier
+        run: npm run format:check
 
-      - name: Run typecheck
-        run: npm run typecheck
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
 
-      - name: Run backend tests
-        run: npm run test
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Start DynamoDB Local
+        run: docker run -d --name dynamodb-local -p 8000:8000 amazon/dynamodb-local -jar DynamoDBLocal.jar -inMemory -sharedDb
+      - name: Integration tests against DynamoDB Local
+        run: npm run test:integration
+        env:
+          DYNAMODB_ENDPOINT: http://localhost:8000
+
+  infra-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Template assertions for every stage
+        run: npm run test:infra
+
+  iac-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install cfn-lint checkov
+      - name: cfn-lint
+        run: cfn-lint
+      - name: checkov (skips are justified in .checkov.yaml)
+        run: checkov --config-file .checkov.yaml
+
+  deploy:
+    # Only when every gate passed, on the main branch, and when a deploy role (OIDC, no long-lived keys) is configured.
+    needs: [lint-format, typecheck, unit, integration, infra-tests, iac-scan]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.AWS_DEPLOY_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace=backend
+      - uses: aws-actions/setup-sam@v2
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - run: sam build --template-file infra/template.yaml
+      - run: >
+          sam deploy
+          --stack-name aqp-solidaria-academic
+          --capabilities CAPABILITY_IAM
+          --resolve-s3
+          --no-confirm-changeset
+          --no-fail-on-empty-changeset

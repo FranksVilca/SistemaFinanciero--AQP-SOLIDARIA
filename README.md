@@ -11,8 +11,8 @@ Sistema cloud-native serverless de publicación de causas sociales y registro de
 ## 1. Arquitectura y Modelo de Seguridad Zero Trust
 
 - **Policy Enforcement Point (PEP)**: API Gateway HTTP API con JWT Authorizer nativo y validación de scopes OAuth + CloudFront con Content Security Policy (CSP) restrictiva.
-- **Policy Decision Point (PDP)**: Cómputo en AWS Lambda (Node.js 24) con roles IAM de mínimo privilegio por función; módulo `authz` embebido (RBAC + validación de ownership) y soporte para Amazon Verified Permissions con políticas Cedar (HU-12).
-- **Policy Administrator (PA)**: Amazon Cognito User Pool con Authorization Code Grant + PKCE, tokens de vida corta ($\le 15$ min) guardados en memoria y MFA TOTP obligatorio para `GESTOR` y `AUDITOR`.
+- **Policy Decision Point (PDP)**: Cómputo en AWS Lambda (Node.js 24) con roles IAM de mínimo privilegio por función; módulo `authz` embebido (RBAC + validación de ownership), siempre invocado a través de `withAuth()`: una prueba falla si una ruta del template no lo usa. Amazon Verified Permissions con Cedar es la **fase 2** y hoy no está conectado (ver `policies/README.md`).
+- **Policy Administrator (PA)**: Amazon Cognito User Pool con Authorization Code Grant + PKCE, tokens de vida corta ($\le 15$ min) guardados en memoria y MFA TOTP obligatorio para todo el pool (Cognito no lo aplica por grupo, así que también los donantes enrolan un autenticador una vez). Las acciones sensibles (publicar, ver auditoría, confirmar una donación) revalidan la sesión contra Cognito.
 - **Integridad e Idempotencia**: Amazon DynamoDB (On-Demand) con `TransactWriteItems` para reserva de clave de idempotencia (UUID) y control estricto de concurrencia (T08: 10 peticiones paralelas $\to$ 1 éxito, 9 conflictos).
 
 ---
@@ -29,12 +29,13 @@ secure-donations-2026/
 ├── backend/                   # AWS Lambda Handlers en Node.js 24 + TypeScript
 │   ├── src/projects/          # Listar, Detalle, Crear, Publicar, Estadísticas
 │   ├── src/donations/         # Intención, Simulación condicional, Historial propio
-│   ├── src/authz/             # Evaluador RBAC + ownership, Cedar adapter
-│   ├── src/audit/             # Auditoría inmutable y consulta
-│   └── test/                  # Suite de pruebas unitarias, integración y aceptación T01-T14
-├── infra/                     # AWS SAM Template (HTTP API, Cognito, DynamoDB, CloudFront)
-├── policies/                  # Esquema y políticas Cedar para Amazon Verified Permissions
-├── docs/                      # OpenAPI 3.1 (api.yaml) y Threat Model (threat-model.md)
+│   ├── src/authz/             # withAuth() obligatorio, evaluador RBAC + ownership, revalidación de sesión
+│   ├── src/audit/             # Escritura única y pseudonimizada de eventos y consulta
+│   └── test/                  # unit (sin base de datos), integration (DynamoDB Local) e infra (template)
+├── infra/                     # Único template SAM (HTTP API, Cognito, DynamoDB, CloudFront, logs, CloudTrail)
+├── scripts/                   # cleanup.ps1: vacía los buckets y elimina el stack
+├── policies/                  # Documentación de la fase 2 (Cedar); no se aplica
+├── docs/                      # OpenAPI (api.yaml), Threat Model, guía del plan gratuito, hallazgos Zero Trust
 └── specs/                     # Especificaciones ejecutables con Spec-Kit
 ```
 
@@ -61,9 +62,18 @@ npm run typecheck
 # Validar estilo y linting con ESLint
 npm run lint
 
-# Ejecutar suite de pruebas unitarias y de integración (Vitest)
+# Pruebas unitarias (sin base de datos)
 npm run test
+
+# Pruebas de integración contra DynamoDB Local (requiere Docker)
+docker compose -f backend/test/integration/docker-compose.yml up -d
+npm run test:integration
+
+# Pruebas sobre infra/template.yaml, en las etapas academic y production
+npm run test:infra
 ```
+
+El CI ejecuta además `cfn-lint`, `checkov` y `npm run format:check`; el despliegue solo ocurre si todo pasa.
 
 ---
 
@@ -76,13 +86,15 @@ Antes del primer despliegue, active una alerta en AWS Budgets con límite de USD
 
 ### Paso 2: Construir y Desplegar Backend con SAM
 ```bash
-cd infra
-sam build
+npm run build --workspace=backend   # compila a backend/dist y genera su package.json (ESM + dependencias)
+sam build --template-file infra/template.yaml
 sam deploy --guided \
   --stack-name aqp-solidaria-academic \
   --parameter-overrides StageName=academic \
-  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
+  --capabilities CAPABILITY_IAM
 ```
+
+Los parámetros opcionales (GuardDuty y Security Hub con prueba de 30 días, PITR, CloudTrail) y lo que queda fuera del plan gratuito están en [docs/free-plan-guide.md](docs/free-plan-guide.md).
 
 ### Paso 3: Construir y Publicar Frontend
 Copie las salidas de SAM (`ApiEndpoint`, `UserPoolId`, `UserPoolClientId`) a `frontend/.env`:
@@ -105,12 +117,11 @@ aws s3 sync dist/ s3://<FrontendBucketName>/ --delete
 
 Para garantizar cero costos al concluir la evaluación o el ciclo académico, ejecute:
 
-```bash
-# 1. Vaciar el bucket S3 del frontend
-aws s3 rm s3://<FrontendBucketName>/ --recursive
+```powershell
+# Vacía los buckets del frontend y de CloudTrail y elimina el stack (un bucket con objetos bloquea `sam delete`)
+./scripts/cleanup.ps1 -Stage academic
 
-# 2. Eliminar toda la pila serverless con SAM
-sam delete --stack-name aqp-solidaria-academic --no-prompts
-
-# 3. Verificar en AWS Resource Explorer que no existan recursos huérfanos
+# Después, verificar en AWS Resource Explorer que no existan recursos huérfanos
 ```
+
+Si activó GuardDuty o Security Hub, se eliminan junto con el stack.

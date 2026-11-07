@@ -29,11 +29,4 @@ export const TABLE_NAMES = {
   audit: process.env.AUDIT_TABLE || "aqp-audit",
 };
 
-export {
-  GetCommand,
-  PutCommand,
-  UpdateCommand,
-  QueryCommand,
-  TransactWriteCommand,
-  TransactGetCommand,
-};
+export { GetCommand, PutCommand, UpdateCommand, QueryCommand, TransactWriteCommand, TransactGetCommand };

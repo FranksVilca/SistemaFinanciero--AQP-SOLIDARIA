@@ -1,106 +1,78 @@
+import { randomUUID } from "node:crypto";
+import { requirePrincipal, withAuth } from "../authz/withAuth.js";
+import { readHeader, type ApiEvent } from "../shared/apiEvent.js";
 import {
-  docClient,
-  TABLE_NAMES,
-  GetCommand,
-  TransactWriteCommand,
-} from "../shared/dynamo.js";
-import { CreateDonationSchema, IdempotencyHeaderSchema } from "../shared/schemas.js";
-import { buildSuccessResponse, buildErrorResponse, ApiResponse } from "../shared/response.js";
-import { extractAuthClaims, enforceAuthz } from "../authz/evaluateAuthz.js";
-import { ValidationError, NotFoundError, ConflictError } from "../shared/errors.js";
+  AUTHZ_ACTIONS,
+  CURRENCY,
+  DONATION_STATUS,
+  IDEMPOTENCY_TTL_SECONDS,
+  PROJECT_STATUS,
+} from "../shared/constants.js";
+import { docClient, GetCommand, TABLE_NAMES, TransactWriteCommand } from "../shared/dynamo.js";
+import { DYNAMO_ERROR, isDynamoError } from "../shared/dynamoErrors.js";
+import { ConflictError, NotFoundError, ValidationError } from "../shared/errors.js";
 import { hashPayload } from "../shared/hash.js";
-import { logInfo, logError } from "../shared/logger.js";
+import { logInfo } from "../shared/logger.js";
+import { parseJsonBody } from "../shared/request.js";
+import { buildSuccessResponse, type ApiResponse } from "../shared/response.js";
+import { CreateDonationSchema, IdempotencyHeaderSchema } from "../shared/schemas.js";
 
-export async function handler(event: {
-  headers?: Record<string, string | undefined>;
-  body?: string;
-  requestContext?: {
-    requestId?: string;
-    authorizer?: {
-      jwt?: {
-        claims?: Record<string, unknown>;
-      };
-    };
-  };
-}): Promise<ApiResponse> {
-  const requestId = event.requestContext?.requestId || `req-${Date.now()}`;
-  logInfo("Iniciando creación de intención de donación", { requestId, action: "CreateDonation" });
+const IDEMPOTENCY_HEADER = "Idempotency-Key";
+const CREATED = 201;
 
-  try {
-    const principal = extractAuthClaims(event);
-    await enforceAuthz({
-      principal,
-      action: "CreateDonation",
-      resourceType: "Donation",
-    });
+function readIdempotencyKey(event: ApiEvent): string {
+  const rawKey = readHeader(event, IDEMPOTENCY_HEADER);
+  if (!rawKey) throw new ValidationError("Cabecera Idempotency-Key (UUID) es obligatoria");
+  if (!IdempotencyHeaderSchema.safeParse(rawKey).success) {
+    throw new ValidationError("Cabecera Idempotency-Key debe ser un UUID válido");
+  }
+  return rawKey;
+}
 
-    const donorSub = principal!.sub;
+async function assertProjectIsPublished(projectId: string): Promise<void> {
+  const { Item: project } = await docClient.send(
+    new GetCommand({ TableName: TABLE_NAMES.projects, Key: { projectId } })
+  );
+  if (!project) throw new NotFoundError("Proyecto no encontrado");
+  if (project.status !== PROJECT_STATUS.published) {
+    throw new ConflictError("El proyecto no está disponible para donaciones (no PUBLICADO)");
+  }
+}
 
-    // Extract and validate Idempotency-Key header (case-insensitive)
-    const rawHeaders = event.headers || {};
-    const idempotencyHeaderKey = Object.keys(rawHeaders).find(
-      (h) => h.toLowerCase() === "idempotency-key"
-    );
-    const idempotencyKey = idempotencyHeaderKey ? rawHeaders[idempotencyHeaderKey] : undefined;
+/** Answers a retried request: the original donation for the same payload, a conflict for a different one. */
+async function replayIdempotentRequest(idempotencyPk: string, payloadHash: string): Promise<ApiResponse | undefined> {
+  const { Item: record } = await docClient.send(
+    new GetCommand({ TableName: TABLE_NAMES.idempotency, Key: { pk: idempotencyPk }, ConsistentRead: true })
+  );
+  if (!record) return undefined;
 
-    if (!idempotencyKey) {
-      throw new ValidationError("Cabecera Idempotency-Key (UUID) es obligatoria");
-    }
+  if (record.payloadHash !== payloadHash) {
+    throw new ConflictError("La clave de idempotencia ya fue utilizada previamente con parámetros distintos");
+  }
+  const { Item: donation } = await docClient.send(
+    new GetCommand({ TableName: TABLE_NAMES.donations, Key: { donationId: record.donationId }, ConsistentRead: true })
+  );
+  return buildSuccessResponse(donation, CREATED);
+}
 
-    const headerValidation = IdempotencyHeaderSchema.safeParse(idempotencyKey);
-    if (!headerValidation.success) {
-      throw new ValidationError("Cabecera Idempotency-Key debe ser un UUID válido");
-    }
-
-    if (!event.body) {
-      throw new ValidationError("Cuerpo de solicitud requerido");
-    }
-
-    let parsedBody: unknown;
-    try {
-      parsedBody = JSON.parse(event.body);
-    } catch {
-      throw new ValidationError("Formato JSON inválido");
-    }
-
-    const bodyValidation = CreateDonationSchema.safeParse(parsedBody);
-    if (!bodyValidation.success) {
-      const errorMsg = bodyValidation.error.errors.map((e) => e.message).join(", ");
-      throw new ValidationError(errorMsg);
-    }
-
-    const { projectId, amountCents } = bodyValidation.data;
-
-    // Verify Project exists and is in PUBLICADO state
-    const projectResult = await docClient.send(
-      new GetCommand({
-        TableName: TABLE_NAMES.projects,
-        Key: { projectId },
-      })
-    );
-
-    const project = projectResult.Item;
-    if (!project) {
-      throw new NotFoundError("Proyecto no encontrado");
-    }
-
-    if (project.status !== "PUBLICADO") {
-      throw new ConflictError("El proyecto no está disponible para donaciones (no PUBLICADO)");
-    }
+export const handler = withAuth(
+  async (context) => {
+    const { event, requestId } = context;
+    const donorSub = requirePrincipal(context).sub;
+    const idempotencyKey = readIdempotencyKey(event);
+    const { projectId, amountCents } = parseJsonBody(event, CreateDonationSchema);
+    await assertProjectIsPublished(projectId);
 
     const payloadHash = hashPayload({ projectId, amountCents });
     const idempotencyPk = `${donorSub}#createDonation#${idempotencyKey}`;
-    const donationId = crypto.randomUUID();
     const now = new Date().toISOString();
-    const ttlEpoch = Math.floor(Date.now() / 1000) + 86400; // 24 hours
-
-    const newDonation = {
-      donationId,
+    const donation = {
+      donationId: randomUUID(),
       projectId,
       donorSub,
       amountCents,
-      currency: "PEN" as const,
-      status: "PENDIENTE_SIMULACION" as const,
+      currency: CURRENCY,
+      status: DONATION_STATUS.pending,
       createdAt: now,
       updatedAt: now,
     };
@@ -115,77 +87,26 @@ export async function handler(event: {
                 Item: {
                   pk: idempotencyPk,
                   payloadHash,
-                  donationId,
-                  responseStatus: 201,
-                  expiresAt: ttlEpoch,
+                  donationId: donation.donationId,
+                  responseStatus: CREATED,
+                  expiresAt: Math.floor(Date.now() / 1000) + IDEMPOTENCY_TTL_SECONDS,
                 },
                 ConditionExpression: "attribute_not_exists(pk)",
               },
             },
-            {
-              Put: {
-                TableName: TABLE_NAMES.donations,
-                Item: newDonation,
-              },
-            },
+            { Put: { TableName: TABLE_NAMES.donations, Item: donation } },
           ],
         })
       );
-
-      logInfo("Intención de donación creada exitosamente", {
-        requestId,
-        donationId,
-        donorSub,
-        amountCents,
-      });
-      return buildSuccessResponse(newDonation, 201);
-    } catch (txErr: any) {
-      if (
-        txErr.name === "TransactionCanceledException" ||
-        txErr.code === "TransactionCanceledException"
-      ) {
-        logInfo("Transacción cancelada: verificando clave de idempotencia existente", {
-          requestId,
-          idempotencyPk,
-        });
-
-        // Inspect existing record
-        const existingRecord = await docClient.send(
-          new GetCommand({
-            TableName: TABLE_NAMES.idempotency,
-            Key: { pk: idempotencyPk },
-            ConsistentRead: true,
-          })
-        );
-
-        if (existingRecord.Item) {
-          if (existingRecord.Item.payloadHash === payloadHash) {
-            // Replay original response
-            const existingDonation = await docClient.send(
-              new GetCommand({
-                TableName: TABLE_NAMES.donations,
-                Key: { donationId: existingRecord.Item.donationId },
-                ConsistentRead: true,
-              })
-            );
-
-            logInfo("Respuesta idempotente rejugada", {
-              requestId,
-              donationId: existingRecord.Item.donationId,
-            });
-            return buildSuccessResponse(existingDonation.Item, 201);
-          } else {
-            // Reused key with altered payload
-            throw new ConflictError(
-              "La clave de idempotencia ya fue utilizada previamente con parámetros distintos"
-            );
-          }
-        }
+      logInfo("Donation intent created", { requestId, donationId: donation.donationId });
+      return buildSuccessResponse(donation, CREATED);
+    } catch (error) {
+      if (isDynamoError(error, DYNAMO_ERROR.transactionCanceled)) {
+        const replay = await replayIdempotentRequest(idempotencyPk, payloadHash);
+        if (replay) return replay;
       }
-      throw txErr;
+      throw error;
     }
-  } catch (err) {
-    logError("Error al registrar intención de donación", err, { requestId });
-    return buildErrorResponse(err, requestId);
-  }
-}
+  },
+  { action: AUTHZ_ACTIONS.createDonation, resourceType: "Donation" }
+);

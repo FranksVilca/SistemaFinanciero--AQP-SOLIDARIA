@@ -1,0 +1,29 @@
+# Checkov configuration for infra/template.yaml.
+# Every skipped check carries the reason. A skip is a conscious trade-off, not an oversight; re-evaluate them
+# when the account leaves the AWS Free Plan (see docs/free-plan-guide.md).
+framework:
+  - cloudformation
+file:
+  - infra/template.yaml
+compact: true
+quiet: true
+skip-check:
+  # Lambda
+  - CKV_AWS_115 # Reserved concurrency would shrink the shared pool of a small account; API Gateway throttling bounds the load instead.
+  - CKV_AWS_116 # A dead letter queue only applies to asynchronous invocations; every function is invoked synchronously by the HTTP API.
+  - CKV_AWS_117 # A VPC would need NAT or VPC endpoints (extra cost) to reach DynamoDB and Cognito; no private resources exist.
+  - CKV_AWS_173 # Environment variables hold table names and a public URL, never secrets.
+  # Encryption with customer managed keys (KMS keys are not free; data stays encrypted at rest with AWS owned keys)
+  - CKV_AWS_119 # DynamoDB tables.
+  - CKV_AWS_158 # CloudWatch log groups.
+  - CKV_AWS_35 # CloudTrail log files.
+  # CloudTrail
+  - CKV_AWS_67 # The deployment is single-region by design (constitution, principle V).
+  # DynamoDB
+  - CKV_AWS_28 # Point-in-time recovery is controlled by the EnablePitr parameter and always on in production; verified by backend/test/infra/dataProtection.test.ts.
+  # Frontend delivery
+  - CKV_AWS_18 # S3 access logging: the frontend bucket only holds public static assets served through CloudFront.
+  - CKV_AWS_21 # S3 versioning: the frontend bucket is rebuilt from source on every deploy.
+  - CKV_AWS_68 # WAF cannot be attached to this API and CloudFront flat-rate plans with WAF are not available on the Free Plan (docs/free-plan-guide.md).
+  - CKV_AWS_86 # CloudFront access logging needs an extra bucket; API Gateway access logs and CloudTrail cover the audit need.
+  - CKV_AWS_174 # TLS 1.2 minimum requires a custom domain certificate; the default CloudFront certificate is used.

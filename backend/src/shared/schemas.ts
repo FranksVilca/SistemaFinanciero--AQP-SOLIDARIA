@@ -4,11 +4,7 @@ export const CurrencySchema = z.literal("PEN");
 
 export const ProjectStatusSchema = z.enum(["BORRADOR", "PUBLICADO"]);
 
-export const DonationStatusSchema = z.enum([
-  "PENDIENTE_SIMULACION",
-  "CONFIRMADA_SIMULADA",
-  "RECHAZADA_SIMULADA",
-]);
+export const DonationStatusSchema = z.enum(["PENDIENTE_SIMULACION", "CONFIRMADA_SIMULADA", "RECHAZADA_SIMULADA"]);
 
 export const AuditOutcomeSchema = z.enum(["SUCCESS", "DENIED", "FAILED"]);
 
@@ -43,9 +39,7 @@ export const SimulateDonationSchema = z.object({
   action: z.enum(["CONFIRMAR", "RECHAZAR"]),
 });
 
-export const IdempotencyHeaderSchema = z
-  .string()
-  .uuid("Idempotency-Key debe ser un UUID v4 válido");
+export const IdempotencyHeaderSchema = z.string().uuid("Idempotency-Key debe ser un UUID v4 válido");
 
 export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
 export type CreateDonationInput = z.infer<typeof CreateDonationSchema>;

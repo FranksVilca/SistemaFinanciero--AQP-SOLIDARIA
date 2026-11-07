@@ -34,3 +34,6 @@ Thumbs.db
 
 # Vitest
 .vitest/
+.claude
+.serena
+.specify/integrations/

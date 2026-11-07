@@ -13,7 +13,7 @@
 | **Policy Enforcement Point (PEP)** | Amazon API Gateway (HTTP API) + AWS CloudFront | Valida criptográficamente el JWT (firma, emisor, expiración, client_id) y exige OAuth scopes antes de invocar cómputo. CloudFront aplica CSP y HSTS. |
 | **Policy Decision Point (PDP) / Policy Engine (PE)** | Módulo `authz` en AWS Lambda (MVP) / Amazon Verified Permissions con Cedar (HU-12) | Evalúa dinámicamente si el `sub` y `cognito:groups` del solicitante tienen permiso sobre el recurso específico y valida ownership. |
 | **Policy Administrator (PA)** | Amazon Cognito User Pool | Emite, renueva y revoca tokens de sesión (Authorization Code + PKCE), administra MFA TOTP para roles con privilegios. |
-| **Fuentes de Información (Data Sources)** | Amazon DynamoDB, CloudWatch Logs, AWS CloudTrail | Provee estado del recurso para validación de condiciones atómicas y registro inmutable de auditoría. |
+| **Fuentes de Información (Data Sources)** | Amazon DynamoDB, CloudWatch Logs, AWS CloudTrail | Provee estado del recurso para validación de condiciones atómicas y registro de auditoría de solo inserción (ninguna función puede editarlo ni borrarlo). |
 
 ---
 
@@ -24,8 +24,8 @@
 3. **Acceso por sesión y por recurso:** Access token $\le 15$ minutos; validación estricta de scopes por ruta y ownership por recurso (T09, T11, T13).
 4. **Política dinámica:** La autorización no es binaria ni estática: valida grupos, estado del recurso (p. ej. `BORRADOR` vs `PUBLICADO`), propietario y stage (`academic`).
 5. **Monitorear la postura de los activos:** Mitigado en Free plan mediante GitHub Actions CI (análisis estático, lint, audit) y CloudTrail para cambios de infraestructura.
-6. **Autenticación y autorización estrictas antes del acceso:** Toda ruta protegida rechaza llamadas sin token o con ID token (T02, T11). TOTP MFA obligatorio en `GESTOR` y `AUDITOR` (T14).
-7. **Recolectar información para mejorar:** Logs estructurados en JSON con `requestId`, retención de 14 días y tabla inmutable `AuditEvents`.
+6. **Autenticación y autorización estrictas antes del acceso:** Toda ruta protegida rechaza llamadas sin token o con ID token (T02, T11). TOTP MFA obligatorio para todo el pool (T14, comprobado en el template; el inicio de sesión real queda pendiente de AWS). Un token robado vale hasta su vencimiento (15 min) salvo en acciones sensibles, que revalidan la sesión contra Cognito (T13).
+7. **Recolectar información para mejorar:** Logs estructurados en JSON con `requestId`, retención de 14 días, y tabla de auditoría de solo inserción con el actor pseudonimizado que registra las denegaciones de rutas protegidas y los éxitos de acciones que cambian estado. Los rechazos 401 de la pasarela quedan en los registros de acceso del API.
 
 ---
 

@@ -18,6 +18,13 @@ const REDACTED_KEYS = new Set([
   "secret",
   "cardnumber",
   "cvv",
+  // Personal data of donors and managers: logs correlate by requestId and pseudonymized actorRef only.
+  "sub",
+  "donorsub",
+  "actorsub",
+  "email",
+  "amountcents",
+  "idempotencykey",
 ]);
 
 function maskSensitiveData(data: unknown): unknown {
@@ -62,19 +69,12 @@ export function logWarn(message: string, context: LogContext = {}): void {
   console.warn(JSON.stringify(logEntry));
 }
 
-export function logError(
-  message: string,
-  error?: unknown,
-  context: LogContext = {}
-): void {
+export function logError(message: string, error?: unknown, context: LogContext = {}): void {
   const logEntry = {
     level: "ERROR",
     timestamp: new Date().toISOString(),
     message,
-    error:
-      error instanceof Error
-        ? { name: error.name, message: error.message, stack: error.stack }
-        : error,
+    error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : error,
     context: maskSensitiveData(context),
   };
   console.error(JSON.stringify(logEntry));

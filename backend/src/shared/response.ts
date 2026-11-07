@@ -6,11 +6,9 @@ export interface ApiResponse {
   body: string;
 }
 
+// CORS is enforced by the API Gateway configuration, never by the handlers.
 const DEFAULT_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type,Authorization,Idempotency-Key",
-  "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
 };
 
 export function buildSuccessResponse<T>(
@@ -37,8 +35,6 @@ export function buildErrorResponse(
   if (error instanceof AppError) {
     statusCode = error.statusCode;
     code = error.code;
-    message = error.message;
-  } else if (error instanceof Error) {
     message = error.message;
   }
 

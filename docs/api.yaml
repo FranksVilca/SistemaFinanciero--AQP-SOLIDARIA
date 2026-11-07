@@ -249,7 +249,11 @@ paths:
   /audit:
     get:
       summary: Consultar eventos de auditoría (solo AUDITOR)
-      description: Retorna registros inmutables de auditoría filtrados por rango de fecha y tipo de evento.
+      description: >
+        Retorna registros de auditoría (éxitos de acciones que cambian estado y denegaciones de rutas protegidas),
+        del más reciente al más antiguo. Sin parámetros devuelve hasta 50 eventos de los últimos 7 días.
+        `eventType` filtra por tipo y `from`/`to` acotan el rango (máximo 7 días). Es una acción sensible: la sesión
+        se revalida contra Cognito, y una sesión revocada responde 401.
       operationId: getAuditEvents
       security:
         - CognitoJWT:
@@ -503,6 +507,13 @@ components:
         outcome:
           type: string
           enum: [SUCCESS, DENIED, FAILED]
+        eventType:
+          type: string
+          enum: [AUTHZ_DECISION, PROJECT_CREATED, PROJECT_PUBLISHED, DONATION_CREATED, DONATION_TRANSITIONED]
+        reason:
+          type: string
+          description: Motivo de una denegación.
+          enum: [UNAUTHENTICATED, ROLE, OWNER, ENGINE_ERROR, SESSION_REVOKED]
 
     ErrorResponse:
       type: object

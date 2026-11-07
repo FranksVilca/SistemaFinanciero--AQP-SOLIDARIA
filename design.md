@@ -12,7 +12,7 @@
 - **AD-03 — Transacciones simuladas:** donaciones como estados simulados; **no procesar pagos reales**. Una versión productiva requeriría un PSP con tokenización, webhooks firmados, conciliación, antifraude y revisión legal.
 - **AD-04 — Backend autoritativo:** permisos, importes y transiciones se validan solo en servidor; dinero en enteros (céntimos de PEN).
 - **AD-05 — Idempotencia atómica:** reserva de clave y creación de donación en un único `TransactWriteItems` condicionado.
-- **AD-06 — Cuenta AWS Free plan:** una cuenta por equipo, una sola región (recomendado `us-east-1`), usuarios IAM con MFA por integrante. IAM Identity Center, Organizations, Verified Access, GuardDuty y Security Hub **no** están disponibles en el Free plan y quedan fuera del diseño.
+- **AD-06 — Cuenta AWS Free plan:** una cuenta por equipo, una sola región (recomendado `us-east-1`), usuarios IAM con MFA por integrante. IAM Identity Center, Organizations (convertir la cuenta en parte de una organización la pasa a plan de pago) y Verified Access quedan fuera del diseño. GuardDuty y Security Hub se ofrecen como **parámetros opcionales apagados por defecto** (`EnableGuardDuty`, `EnableSecurityHub`) para aprovechar sus pruebas de 30 días, cuya disponibilidad depende del tipo de cuenta (ver `docs/free-plan-guide.md`).
 - **AD-07 — Tokens de vida corta:** access token ≤ 15 min y refresh token revocable, porque el JWT authorizer no consulta revocaciones (ver §6.3).
 - **AD-08 — Autorización en dos niveles:** MVP con RBAC + ownership en el módulo `authz`; extensión HU-12 con Amazon Verified Permissions (Cedar) como Policy Engine externo.
 
@@ -139,7 +139,7 @@ flowchart TD
 | Acceso no autenticado | JWT authorizer | T02, T11 |
 | Elevación vertical | RBAC por `cognito:groups` | T03 |
 | Acceso horizontal / BOLA | Ownership por `sub` en cada acceso | T09, T12 |
-| Robo de credenciales privilegiadas | MFA TOTP obligatorio para GESTOR y AUDITOR | T14 |
+| Robo de credenciales privilegiadas | MFA TOTP obligatorio para todo el pool (Cognito no lo aplica por grupo) y revalidación de la sesión en acciones sensibles | T13, T14 |
 | Entrada manipulada | Zod en backend, `amountCents` entero acotado | T04 |
 | Repetición / doble conteo | Idempotencia + transacciones condicionadas | T06–T08 |
 | Uso de token robado | Vida corta + revocación de refresh token | T13 |
@@ -159,7 +159,7 @@ flowchart TD
 
 ## 7. Cuenta AWS Free plan: configuración y costos
 
-**Servicios usados y disponibilidad en el Free plan** (verificar en la lista oficial antes de desplegar): Lambda, API Gateway, DynamoDB, Cognito, S3, CloudFront, CloudWatch, CloudFormation/SAM, IAM, CloudTrail, Verified Permissions y AWS Budgets están incluidos.
+**Servicios usados y disponibilidad en el Free plan** (verificar en la lista oficial antes de desplegar): Lambda, API Gateway, DynamoDB, Cognito, S3, CloudFront, CloudWatch, CloudFormation/SAM, IAM, CloudTrail (primer trail de eventos de gestión) y AWS Budgets están incluidos. Verified Permissions se cobra por solicitud y su tramo gratuito **no está confirmado**, por eso es la fase 2 y no se despliega.
 
 **Configuración inicial (día 1):**
 1. Un integrante crea la cuenta Free plan (requiere correo, teléfono y posiblemente tarjeta; solo se cobra si se pasa a Paid plan).

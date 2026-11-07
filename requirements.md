@@ -16,7 +16,7 @@ Una fundación peruana administra proyectos sociales (educación, alimentación 
 
 **Principios Zero Trust aplicados (NIST SP 800-207):** ninguna solicitud es confiable por su origen de red; cada solicitud protegida se autentica y autoriza por recurso; privilegio mínimo en usuarios y en cargas de trabajo; asumir brecha (limitar impacto y registrar evidencia).
 
-**Fuera de alcance declarado (limitaciones Zero Trust):** verificación de postura del dispositivo, evaluación continua de riesgo de sesión, ZTNA (AWS Verified Access) y detección gestionada (GuardDuty/Security Hub), por no estar disponibles en el AWS Free plan. Estas limitaciones deben explicarse en el informe.
+**Fuera de alcance declarado (limitaciones Zero Trust):** verificación de postura del dispositivo, evaluación continua de riesgo de sesión, ZTNA (AWS Verified Access) y la detección gestionada continua: GuardDuty y Security Hub solo se ofrecen como parámetros opcionales con pruebas de 30 días, sujetos al tipo de cuenta, y no sustituyen la evaluación continua del riesgo de sesión. Estas limitaciones deben explicarse en el informe.
 
 ### Roles y matriz de permisos
 
@@ -66,7 +66,7 @@ Prioridad: **MVP** = obligatorio; **Extensión** = puntos adicionales, no necesa
 
 **HU-11 — MFA para roles privilegiados (MVP).** Como responsable de seguridad quiero un segundo factor para cuentas con privilegios.
 
-- **CA-11.1:** Los usuarios de los grupos GESTOR y AUDITOR tienen MFA TOTP (app autenticadora) configurado; no se usa MFA por SMS.
+- **CA-11.1:** El MFA TOTP (app autenticadora) es obligatorio para todo el pool de usuarios, incluidos GESTOR y AUDITOR (Cognito no lo aplica por grupo); no se usa MFA por SMS.
 - **CA-11.2:** Se evidencia (captura o prueba) que un usuario GESTOR no completa el inicio de sesión sin el segundo factor.
 
 ### EP-03. Donaciones simuladas
