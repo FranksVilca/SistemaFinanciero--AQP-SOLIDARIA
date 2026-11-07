@@ -3,7 +3,7 @@
 **Curso:** Tópicos Avanzados en Ingeniería de Software — EPIS, UNSA  
 **Fecha de ejecución:** 2026-11-06 (ejecución local, rama `fix/zero-trust-audit`)  
 **Entorno:** Vitest 3.2.7, Node.js v26.11.1 (local; CI usa Node.js 24), Docker con `amazon/dynamodb-local`  
-**Resultado global:** unitarias 117/117 backend + 15/15 frontend; integración 6/6 contra DynamoDB Local.
+**Resultado global:** unitarias 120/120 backend + 15/15 frontend; integración 6/6 contra DynamoDB Local.
 
 Este reporte solo declara como ejecutado lo que aparece en las salidas de la sección 1. Las pruebas que requieren la cuenta AWS desplegada (API Gateway, Cognito, IAM real) figuran como **pendiente de evidencia en despliegue**.
 
@@ -17,23 +17,24 @@ DynamoDB se reemplaza por mocks; las pruebas de plantilla analizan `infra/templa
 
 ```text
  RUN  v3.2.7 <repo>/backend
- ✓ test/authz.test.ts (13 tests) 15ms
- ✓ test/bola.test.ts (2 tests) 14ms
- ✓ test/audit.test.ts (4 tests) 21ms
- ✓ test/donationState.test.ts (4 tests) 22ms
- ✓ test/projects.test.ts (4 tests) 19ms
- ✓ test/concurrency.test.ts (1 test) 22ms
- ✓ test/ownership.test.ts (6 tests) 29ms
- ✓ test/idempotency.test.ts (3 tests) 22ms
- ✓ test/mfa.test.ts (26 tests) 27ms
- ✓ test/projectManagement.test.ts (6 tests) 33ms
- ✓ test/leastPrivilege.test.ts (25 tests) 48ms
- ✓ test/donationValidation.test.ts (4 tests) 8ms
- ✓ test/response.test.ts (10 tests) 5ms
- ✓ test/cedarEquivalence.test.ts (4 tests) 3ms
- ✓ test/tokenRevocation.test.ts (5 tests) 5ms
- Test Files  15 passed (15)
-      Tests  117 passed (117)
+ ✓ test/authz.test.ts (13 tests)
+ ✓ test/bola.test.ts (2 tests)
+ ✓ test/audit.test.ts (4 tests)
+ ✓ test/donationState.test.ts (4 tests)
+ ✓ test/concurrency.test.ts (1 test)
+ ✓ test/projects.test.ts (4 tests)
+ ✓ test/ownership.test.ts (6 tests)
+ ✓ test/idempotency.test.ts (3 tests)
+ ✓ test/mfa.test.ts (26 tests)
+ ✓ test/leastPrivilege.test.ts (25 tests)
+ ✓ test/projectManagement.test.ts (6 tests)
+ ✓ test/response.test.ts (10 tests)
+ ✓ test/donationValidation.test.ts (4 tests)
+ ✓ test/cedarEquivalence.test.ts (4 tests)
+ ✓ test/tokenRevocation.test.ts (5 tests)
+ ✓ test/integrationGuard.test.ts (3 tests)
+ Test Files  16 passed (16)
+      Tests  120 passed (120)
 
  RUN  v3.2.7 <repo>/frontend
  ✓ test/logoutChain.test.ts (15 tests) 8ms
@@ -63,7 +64,7 @@ npm run dynamodb:local:stop
       Tests  6 passed (6)
 ```
 
-Sin `DYNAMODB_ENDPOINT` la suite se omite y lo indica: `[integration] DYNAMODB_ENDPOINT is not set: skipping DynamoDB Local integration tests.` En CI (`.github/workflows/ci.yml`) el job `validate` levanta `amazon/dynamodb-local` como contenedor de servicio y ejecuta este mismo comando.
+En local, sin `DYNAMODB_ENDPOINT` la suite se omite y lo indica: `[integration] DYNAMODB_ENDPOINT is not set: skipping DynamoDB Local integration tests.` En CI (`CI` definido) la falta del endpoint hace fallar la ejecución (`test/integrationGuard.test.ts`), para que el job nunca pase con cero pruebas ejecutadas. En CI (`.github/workflows/ci.yml`) el job `validate` levanta `amazon/dynamodb-local` como contenedor de servicio y ejecuta este mismo comando.
 
 ---
 
