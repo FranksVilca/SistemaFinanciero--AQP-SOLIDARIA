@@ -33,6 +33,8 @@ Globals:
         DONATIONS_TABLE: !Ref DonationsTable
         IDEMPOTENCY_TABLE: !Ref IdempotencyTable
         AUDIT_TABLE: !Ref AuditTable
+        # Empty in AWS (real endpoint). Declared so `sam local --env-vars` can point it at DynamoDB Local.
+        DYNAMODB_ENDPOINT: ""
         NODE_OPTIONS: "--enable-source-maps"
 
 Resources:

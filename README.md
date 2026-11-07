@@ -80,6 +80,16 @@ npm run dynamodb:local:stop
 ```
 En CI, el job `validate` levanta `amazon/dynamodb-local` como contenedor de servicio y ejecuta el mismo comando.
 
+### API local con SAM CLI y DynamoDB Local
+Requiere Docker y [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html) (por ejemplo, `uv tool install aws-sam-cli`).
+```bash
+npm run dev:api        # API en http://127.0.0.1:3100 (otro puerto: PORT=3200 npm run dev:api)
+npm run dev:api:stop   # detiene DynamoDB Local
+```
+El script compila el backend, levanta DynamoDB Local en una red Docker, crea las tablas a partir de `infra/template.yaml` y ejecuta `sam local start-api` con credenciales falsas, por lo que nunca accede a AWS real.
+
+Limitación: SAM CLI no emula los JWT authorizers de HTTP API ni Cognito. Las rutas públicas (`GET /v1/projects...`) funcionan; las protegidas responden 401 porque el backend exige identidad (defensa en profundidad). Su evidencia debe obtenerse sobre el despliegue en AWS.
+
 ---
 
 ## 4. Despliegue en AWS Free Plan
@@ -91,6 +101,7 @@ Antes del primer despliegue, active una alerta en AWS Budgets con límite de USD
 
 ### Paso 2: Construir y Desplegar Backend con SAM
 ```bash
+npm run build --workspace=backend   # genera backend/dist y su package.json para Lambda
 cd infra
 sam build
 sam deploy --guided \

@@ -9,12 +9,16 @@ import {
   TransactGetCommand,
 } from "@aws-sdk/lib-dynamodb";
 
-const region = process.env.AWS_REGION || "us-east-1";
+// DYNAMODB_ENDPOINT is declared empty in the template; only local runs (sam local, tests)
+// set it, so an empty value must fall back to the real regional endpoint.
+export function dynamoClientConfig(env: NodeJS.ProcessEnv = process.env) {
+  return {
+    region: env.AWS_REGION || "us-east-1",
+    endpoint: env.DYNAMODB_ENDPOINT || undefined,
+  };
+}
 
-const rawClient = new DynamoDBClient({
-  region,
-  endpoint: process.env.DYNAMODB_ENDPOINT,
-});
+const rawClient = new DynamoDBClient(dynamoClientConfig());
 
 export const docClient = DynamoDBDocumentClient.from(rawClient, {
   marshallOptions: {
