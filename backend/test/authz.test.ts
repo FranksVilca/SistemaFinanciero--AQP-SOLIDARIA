@@ -105,3 +105,29 @@ describe("User Story 2 & Security Tests - Zero Trust Auth & RBAC (HU-03, HU-04, 
     expect(principal?.groups).toContain("DONANTE");
   });
 });
+
+describe("cognito:groups claim parsing (API Gateway flattened formats)", () => {
+  const eventWithGroups = (rawGroups: unknown) => ({
+    requestContext: {
+      authorizer: { jwt: { claims: { sub: "sub-1", "cognito:groups": rawGroups } } },
+    },
+  });
+
+  it.each([
+    ["native array", ["GESTOR", "AUDITOR"]],
+    ["JSON string", '["GESTOR","AUDITOR"]'],
+    ["HTTP API bracketed, space separated", "[GESTOR AUDITOR]"],
+    ["bracketed, comma separated", "[GESTOR, AUDITOR]"],
+    ["plain comma separated", "GESTOR,AUDITOR"],
+  ])("extracts groups from %s", (_label, rawGroups) => {
+    expect(extractAuthClaims(eventWithGroups(rawGroups))?.groups).toEqual(["GESTOR", "AUDITOR"]);
+  });
+
+  it("extracts a single bracketed group as sent by HTTP API", () => {
+    expect(extractAuthClaims(eventWithGroups("[GESTOR]"))?.groups).toEqual(["GESTOR"]);
+  });
+
+  it("returns no groups when the claim is absent", () => {
+    expect(extractAuthClaims(eventWithGroups(undefined))?.groups).toEqual([]);
+  });
+});

@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/distPackage.mjs",
     "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
@@ -17,7 +18,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.8.0",
-    "vitest": "^3.0.5"
+    "vitest": "^3.0.5",
+    "yaml": "^2.9.1"
   }
 }

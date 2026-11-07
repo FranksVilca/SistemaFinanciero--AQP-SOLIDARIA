@@ -4,6 +4,7 @@ import { buildSuccessResponse, buildErrorResponse, ApiResponse } from "../shared
 import { extractAuthClaims, enforceAuthz } from "../authz/evaluateAuthz.js";
 import { ValidationError } from "../shared/errors.js";
 import { logInfo, logError } from "../shared/logger.js";
+import { logAuditEvent } from "../audit/logAuditEvent.js";
 
 export async function handler(event: {
   body?: string;
@@ -68,24 +69,15 @@ export async function handler(event: {
       })
     );
 
-    // Save audit event
-    const eventId = crypto.randomUUID();
-    await docClient.send(
-      new PutCommand({
-        TableName: TABLE_NAMES.audit,
-        Item: {
-          eventType: "PROJECT_LIFECYCLE",
-          "timestamp#eventId": `${now}#${eventId}`,
-          eventId,
-          timestamp: now,
-          requestId,
-          actorRef: principal?.sub || "unknown",
-          resourceRef: `project:${projectId}`,
-          action: "CREATE_PROJECT",
-          outcome: "SUCCESS",
-        },
-      })
-    );
+    // Save audit event (append-only, pseudonymized actor)
+    await logAuditEvent({
+      eventType: "PROJECT_LIFECYCLE",
+      requestId,
+      actorSub: principal?.sub || "unknown",
+      resourceRef: `project:${projectId}`,
+      action: "CREATE_PROJECT",
+      outcome: "SUCCESS",
+    });
 
     logInfo("Proyecto creado exitosamente en BORRADOR", {
       requestId,

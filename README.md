@@ -12,8 +12,9 @@ Sistema cloud-native serverless de publicación de causas sociales y registro de
 
 - **Policy Enforcement Point (PEP)**: API Gateway HTTP API con JWT Authorizer nativo y validación de scopes OAuth + CloudFront con Content Security Policy (CSP) restrictiva.
 - **Policy Decision Point (PDP)**: Cómputo en AWS Lambda (Node.js 24) con roles IAM de mínimo privilegio por función; módulo `authz` embebido (RBAC + validación de ownership) y soporte para Amazon Verified Permissions con políticas Cedar (HU-12).
-- **Policy Administrator (PA)**: Amazon Cognito User Pool con Authorization Code Grant + PKCE, tokens de vida corta ($\le 15$ min) guardados en memoria y MFA TOTP obligatorio para `GESTOR` y `AUDITOR`.
-- **Integridad e Idempotencia**: Amazon DynamoDB (On-Demand) con `TransactWriteItems` para reserva de clave de idempotencia (UUID) y control estricto de concurrencia (T08: 10 peticiones paralelas $\to$ 1 éxito, 9 conflictos).
+- **Policy Administrator (PA)**: dos Amazon Cognito User Pools con Authorization Code Grant + PKCE y tokens de vida corta ($\le 15$ min) guardados en memoria: un pool de donantes (`DONANTE`, MFA TOTP opcional) y un pool de staff (`GESTOR`, `AUDITOR`, MFA TOTP obligatorio, alta solo por administrador). Cada pool tiene su propio JWT Authorizer en API Gateway.
+- **Integridad e Idempotencia**: Amazon DynamoDB (On-Demand) con `TransactWriteItems` para reserva de clave de idempotencia (UUID) y control estricto de concurrencia (T08: 10 peticiones paralelas $\to$ 1 éxito, 9 conflictos, verificado contra DynamoDB Local en `backend/test/integration/`).
+- **Limitación conocida (T13, CA-03.4)**: el JWT Authorizer de API Gateway valida firma, emisor, audiencia y expiración, pero **no consulta la revocación** de Cognito. Un access token revocado (logout o `RevokeToken`) sigue siendo aceptado por el API hasta que expira; la exposición queda acotada a $\le 15$ minutos por `AccessTokenValidity`. La revocación sí invalida el refresh token, por lo que no se emiten tokens nuevos. El procedimiento de verificación tras el despliegue está en `docs/threat-model.md` (sección 4).
 
 ---
 
@@ -61,9 +62,33 @@ npm run typecheck
 # Validar estilo y linting con ESLint
 npm run lint
 
-# Ejecutar suite de pruebas unitarias y de integración (Vitest)
+# Ejecutar la suite unitaria (Vitest, DynamoDB simulado con mocks)
 npm run test
 ```
+
+### Pruebas de integración contra DynamoDB Local
+Las pruebas de `backend/test/integration/` (T08 concurrencia, T06/T07 idempotencia, T09 propiedad) ejecutan los handlers reales contra DynamoDB Local, con tablas creadas a partir de los esquemas de clave de `infra/template.yaml`. Requieren Docker. Sin `DYNAMODB_ENDPOINT` se omiten con un mensaje explícito.
+```bash
+# Levantar DynamoDB Local (docker run --rm -d --name aqp-dynamodb-local -p 8000:8000 amazon/dynamodb-local)
+npm run dynamodb:local
+
+# Ejecutar las pruebas de integración
+DYNAMODB_ENDPOINT=http://localhost:8000 npm run test:integration
+
+# Detener el contenedor
+npm run dynamodb:local:stop
+```
+En CI, el job `validate` levanta `amazon/dynamodb-local` como contenedor de servicio y ejecuta el mismo comando.
+
+### API local con SAM CLI y DynamoDB Local
+Requiere Docker y [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html) (por ejemplo, `uv tool install aws-sam-cli`).
+```bash
+npm run dev:api        # API en http://127.0.0.1:3100 (otro puerto: PORT=3200 npm run dev:api)
+npm run dev:api:stop   # detiene DynamoDB Local
+```
+El script compila el backend, levanta DynamoDB Local en una red Docker, crea las tablas a partir de `infra/template.yaml` y ejecuta `sam local start-api` con `DYNAMODB_ENDPOINT` apuntando al contenedor local, de modo que las Lambdas leen y escriben solo en DynamoDB Local.
+
+Limitación: SAM CLI no emula los JWT authorizers de HTTP API ni Cognito. Las rutas públicas (`GET /v1/projects...`) funcionan; las protegidas responden 401 porque el backend exige identidad (defensa en profundidad). Su evidencia debe obtenerse sobre el despliegue en AWS.
 
 ---
 
@@ -76,6 +101,7 @@ Antes del primer despliegue, active una alerta en AWS Budgets con límite de USD
 
 ### Paso 2: Construir y Desplegar Backend con SAM
 ```bash
+npm run build --workspace=backend   # genera backend/dist y su package.json para Lambda
 cd infra
 sam build
 sam deploy --guided \
@@ -85,11 +111,15 @@ sam deploy --guided \
 ```
 
 ### Paso 3: Construir y Publicar Frontend
-Copie las salidas de SAM (`ApiEndpoint`, `UserPoolId`, `UserPoolClientId`) a `frontend/.env`:
+Copie las salidas de SAM (`ApiEndpoint`, `UserPoolId`, `UserPoolClientId`, `StaffUserPoolId`, `StaffUserPoolClientId`, `HostedUiDomain`, `StaffHostedUiDomain`) a `frontend/.env`:
 ```env
 VITE_API_BASE_URL=https://<apiId>.execute-api.us-east-1.amazonaws.com/academic/v1
 VITE_COGNITO_AUTHORITY=https://cognito-idp.us-east-1.amazonaws.com/<userPoolId>
 VITE_COGNITO_CLIENT_ID=<userPoolClientId>
+VITE_COGNITO_DOMAIN=<HostedUiDomain>
+VITE_STAFF_COGNITO_AUTHORITY=https://cognito-idp.us-east-1.amazonaws.com/<staffUserPoolId>
+VITE_STAFF_COGNITO_CLIENT_ID=<staffUserPoolClientId>
+VITE_STAFF_COGNITO_DOMAIN=<StaffHostedUiDomain>
 ```
 
 Compile los activos estáticos y súbalos al bucket privado de S3:

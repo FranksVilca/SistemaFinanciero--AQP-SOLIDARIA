@@ -153,8 +153,8 @@ secure-donations-2026/
   - `queryAudit`: Validates `AUDITOR` group with verified MFA; queries `AuditEvents` table by event type and date range.
 
 ### 3. Infrastructure & Deployment Subsystem (`infra/`)
-- **Cognito**: User Pool with client configured for Authorization Code Grant + PKCE. Resource Server defining scopes `api/projects.write`, `api/donations.write`, `api/donations.read`, `api/audit.read`. User groups: `DONANTE`, `GESTOR`, `AUDITOR`. MFA configuration enforcing TOTP for `GESTOR` and `AUDITOR`.
-- **API Gateway HTTP API**: Configured with `$default` or `academic` stage, JWT Authorizer pointing to Cognito User Pool, and route-level authorization scopes.
+- **Cognito**: Two User Pools, each with a public client configured for Authorization Code Grant + PKCE. Donor pool: group `DONANTE`, scopes `api/donations.write`, `api/donations.read`, MFA TOTP optional. Staff pool: groups `GESTOR`, `AUDITOR`, scopes `api/projects.write`, `api/audit.read`, admin-only sign-up, MFA TOTP mandatory (`MfaConfiguration: ON`, `SOFTWARE_TOKEN_MFA` only).
+- **API Gateway HTTP API**: Configured with `$default` or `academic` stage, one JWT Authorizer per Cognito User Pool (donor routes on the donor authorizer, GESTOR/AUDITOR routes on the staff authorizer), and route-level authorization scopes.
 - **DynamoDB Tables**:
   - `aqp-projects`: PK `projectId` (GSI: `status-createdAt-index`).
   - `aqp-donations`: PK `donationId` (GSI: `donorSub-createdAt-index`).

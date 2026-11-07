@@ -1,12 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { User } from "oidc-client-ts";
-import { userManager, loginWithOidc, logoutWithOidc } from "./authService.js";
+import { userManagers, loginWithOidc, logoutWithOidc, AuthRealm } from "./authService.js";
 
 interface AuthContextType {
   user: User | null;
   roles: string[];
   isLoading: boolean;
   login: () => Promise<void>;
+  loginStaff: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -15,37 +16,47 @@ const AuthContext = createContext<AuthContextType>({
   roles: [],
   isLoading: true,
   login: async () => {},
+  loginStaff: async () => {},
   logout: async () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [users, setUsers] = useState<Record<AuthRealm, User | null>>({ donor: null, staff: null });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    userManager
-      .getUser()
-      .then((loadedUser) => {
-        setUser(loadedUser);
-      })
-      .catch(() => {
-        setUser(null);
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+    const realms = Object.keys(userManagers) as AuthRealm[];
+    const setRealmUser = (realm: AuthRealm, realmUser: User | null) =>
+      setUsers((prev) => ({ ...prev, [realm]: realmUser }));
 
-    const onUserLoaded = (loadedUser: User) => setUser(loadedUser);
-    const onUserUnloaded = () => setUser(null);
+    Promise.all(
+      realms.map((realm) =>
+        userManagers[realm]
+          .getUser()
+          .then((loadedUser) => setRealmUser(realm, loadedUser))
+          .catch(() => setRealmUser(realm, null))
+      )
+    ).finally(() => {
+      setIsLoading(false);
+    });
 
-    userManager.events.addUserLoaded(onUserLoaded);
-    userManager.events.addUserUnloaded(onUserUnloaded);
+    const cleanups = realms.map((realm) => {
+      const manager = userManagers[realm];
+      const onUserLoaded = (loadedUser: User) => setRealmUser(realm, loadedUser);
+      const onUserUnloaded = () => setRealmUser(realm, null);
+      manager.events.addUserLoaded(onUserLoaded);
+      manager.events.addUserUnloaded(onUserUnloaded);
+      return () => {
+        manager.events.removeUserLoaded(onUserLoaded);
+        manager.events.removeUserUnloaded(onUserUnloaded);
+      };
+    });
 
-    return () => {
-      userManager.events.removeUserLoaded(onUserLoaded);
-      userManager.events.removeUserUnloaded(onUserUnloaded);
-    };
+    return () => cleanups.forEach((cleanup) => cleanup());
   }, []);
+
+  // Staff session (GESTOR/AUDITOR pool) takes precedence over a donor session.
+  const user = users.staff ?? users.donor;
 
   const roles = React.useMemo(() => {
     if (!user?.profile) return [];
@@ -61,7 +72,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         roles,
         isLoading,
-        login: loginWithOidc,
+        login: () => loginWithOidc("donor"),
+        loginStaff: () => loginWithOidc("staff"),
         logout: logoutWithOidc,
       }}
     >

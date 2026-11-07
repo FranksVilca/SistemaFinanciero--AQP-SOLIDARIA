@@ -34,6 +34,8 @@ export async function logAuditEvent(params: LogAuditParams): Promise<void> {
     new PutCommand({
       TableName: TABLE_NAMES.audit,
       Item: item,
+      // Append-only: never overwrite an existing audit event.
+      ConditionExpression: "attribute_not_exists(eventType)",
     })
   );
 }

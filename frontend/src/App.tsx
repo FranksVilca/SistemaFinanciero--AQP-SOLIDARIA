@@ -9,6 +9,8 @@ import { DonorHistoryPage } from "./pages/DonorHistoryPage.js";
 import { ManagerDashboardPage } from "./pages/ManagerDashboardPage.js";
 import { AuditorPage } from "./pages/AuditorPage.js";
 import { AuthCallbackPage } from "./pages/AuthCallbackPage.js";
+import { LogoutContinuePage } from "./pages/LogoutContinuePage.js";
+import { LOGOUT_CONTINUE_PATH } from "./auth/logoutChain.js";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,6 +36,8 @@ export const App: React.FC = () => {
                 <Route path="/manager" element={<ManagerDashboardPage />} />
                 <Route path="/auditor" element={<AuditorPage />} />
                 <Route path="/auth/callback" element={<AuthCallbackPage />} />
+                <Route path="/auth/staff/callback" element={<AuthCallbackPage realm="staff" />} />
+                <Route path={LOGOUT_CONTINUE_PATH} element={<LogoutContinuePage />} />
               </Routes>
             </main>
             <footer className="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500">

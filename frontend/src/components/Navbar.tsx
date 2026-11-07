@@ -4,7 +4,7 @@ import { useAuth } from "../auth/AuthContext.js";
 import { HeartHandshake, LogIn, LogOut, Shield, User, FileText } from "lucide-react";
 
 export const Navbar: React.FC = () => {
-  const { user, roles, login, logout } = useAuth();
+  const { user, roles, login, loginStaff, logout } = useAuth();
 
   const isDonante = roles.includes("DONANTE");
   const isGestor = roles.includes("GESTOR");
@@ -91,13 +91,23 @@ export const Navbar: React.FC = () => {
                 </button>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={login}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-700 shadow-sm transition-colors focus:outline-none"
-              >
-                <LogIn className="w-4 h-4" /> Iniciar Sesión (PKCE)
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={loginStaff}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none"
+                  title="Gestores y auditores (MFA TOTP obligatorio)"
+                >
+                  <Shield className="w-3.5 h-3.5" /> Acceso staff
+                </button>
+                <button
+                  type="button"
+                  onClick={login}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-700 shadow-sm transition-colors focus:outline-none"
+                >
+                  <LogIn className="w-4 h-4" /> Iniciar Sesión (PKCE)
+                </button>
+              </>
             )}
           </div>
         </div>
