@@ -7,12 +7,14 @@ Esquema en [data-model.md](../data-model.md). Este contrato fija el comportamien
 - Único punto: `recordAuditEvent(params)`, invocado solo por `withAuth`.
 - Entrada: `eventType`, `requestId`, `actorSub?`, `resourceRef`, `action`, `outcome`, `reason?`.
 - El `actorSub` nunca se persiste: se transforma en `actorRef` dentro de la función.
-- Inserción con `attribute_not_exists`; un conflicto se registra como error y no se reintenta.
+- Inserción con `attribute_not_exists(auditDay)`; un conflicto se registra como error y no se reintenta.
+- Cuándo se escribe: ver la regla de auditoría en [with-auth.md](with-auth.md) (denegaciones de rutas protegidas y éxitos de acciones que cambian estado).
 
 ## Lectura (`GET /v1/audit`)
 
 - Solo grupo AUDITOR, scope `api/audit.read`, acción sensible.
-- Devuelve eventos de éxito y denegados, más recientes primero. Respuesta y errores sin cambios respecto de `docs/api.yaml`.
+- Consulta las particiones `auditDay` desde el día más reciente hacia atrás (máximo 7 días y 50 eventos en total), más recientes primero. `eventType` es un filtro opcional y `from`/`to` acotan el rango de días.
+- Devuelve eventos de éxito y denegados. Forma de la respuesta y errores sin cambios respecto de `docs/api.yaml`.
 
 ## Garantías verificables
 

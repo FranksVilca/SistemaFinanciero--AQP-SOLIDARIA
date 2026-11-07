@@ -6,8 +6,9 @@ Las tablas de negocio no cambian de forma. Cambian la tabla de auditoría (atrib
 
 | Atributo | Tipo | Regla |
 |---|---|---|
-| `eventType` (PK) | string | Familia del evento: `AUTHZ_DECISION`, `PROJECT_CREATED`, `PROJECT_PUBLISHED`, `DONATION_CREATED`, `DONATION_TRANSITIONED` |
+| `auditDay` (PK) | string | Fecha UTC `YYYY-MM-DD` del evento. Reparte la escritura por día y permite listar de más reciente a más antiguo con un `Query` por día |
 | `timestamp#eventId` (SK) | string | `ISO-8601#uuid`; único por evento |
+| `eventType` | string | Atributo (no clave): `AUTHZ_DECISION`, `PROJECT_CREATED`, `PROJECT_PUBLISHED`, `DONATION_CREATED`, `DONATION_TRANSITIONED`. Sirve de filtro opcional |
 | `eventId` | string (UUID) | Generado en el servidor |
 | `timestamp` | string ISO-8601 | Instante de la decisión |
 | `requestId` | string | Correlación con los logs |
@@ -18,7 +19,9 @@ Las tablas de negocio no cambian de forma. Cambian la tabla de auditoría (atrib
 | `reason` | string (opcional) | `UNAUTHENTICATED`, `ROLE`, `OWNER`, `STATE`, `SESSION_REVOKED` |
 
 **Reglas**
-- Solo se inserta (`PutItem` con `attribute_not_exists`); nunca `Update` ni `Delete`.
+- Solo se inserta (`PutItem` con `attribute_not_exists(auditDay)`); nunca `Update` ni `Delete`.
+- Se audita: toda denegación de una acción protegida y todo éxito de una acción que cambia estado; nunca acciones públicas ni éxitos de lectura.
+- Cambiar la clave reemplaza la tabla al desplegar; aceptable en la etapa académica (no hay datos de producción).
 - Sin `sub`, correo, token ni monto en crudo (FR-015).
 - Solo el rol AUDITOR los lee.
 

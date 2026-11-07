@@ -65,7 +65,9 @@ Comprobar y guardar en `evidence/`:
 
 ## Limpieza
 
-```bash
-sam delete
+```powershell
+./scripts/cleanup.ps1      # vacía los buckets de logs y frontend y ejecuta sam delete
 docker rm -f ddb-local
 ```
+
+Un bucket con objetos impide que `sam delete` termine; por eso se usa el script en vez de `sam delete` directo.

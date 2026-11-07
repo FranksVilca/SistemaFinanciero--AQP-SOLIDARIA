@@ -37,7 +37,9 @@ Cada decisión se tomó leyendo el código y el template actuales. Lo marcado **
 - **Actor**: `usr_` + SHA-256 del `sub` truncado. El `sub` es un UUID aleatorio (122 bits), así que el hash no se invierte por fuerza bruta y no hace falta una sal secreta. Se aplica siempre, no por handler.
 - **Denegados**: se auditan los 401/403 que decide el backend. Los 401 que emite el authorizer de API Gateway nunca llegan a Lambda; quedan en los **registros de acceso** del API (se añade `AccessLogSettings`).
 - **Fallo de escritura**: en éxitos, se registra en logs y la respuesta se mantiene; en denegados, se responde igual la denegación. Regla explícita y probada (edge case de la spec).
-- **Alternatives**: otra cuenta de AWS (ideal; fuera de alcance); tabla de solo escritura vía Streams: complejidad sin beneficio hoy.
+- **Qué se audita** (resultado del análisis de consistencia): denegaciones de cualquier acción protegida y éxitos solo de acciones que cambian estado. Las rutas públicas no se auditan, así que sus funciones no necesitan permisos sobre Audit; `GetMyDonations` y `GetAuditEvents` solo escriben denegaciones.
+- **Clave de la tabla**: `auditDay` (fecha UTC) + `timestamp#eventId`, con `eventType` como atributo. La clave anterior (`eventType`) impedía listar éxitos y denegados de distintos tipos con un solo `Query`. Se consultan los últimos 7 días, de más reciente a más antiguo, hasta 50 eventos.
+- **Alternatives**: otra cuenta de AWS (ideal; fuera de alcance: Organizations cambia el plan de la cuenta); varias consultas por `eventType` combinadas (más llamadas y orden manual); un GSI por fecha (índice extra sin beneficio frente a la clave de día).
 
 ## 4b. Revalidación de sesión (H9)
 

@@ -38,7 +38,7 @@ Llevar la plataforma a la arquitectura objetivo (`docs/diagrams/zta-architecture
 | II. Seguridad académica / integridad financiera | Sin cambios de dominio; se corrige la transición de confirmación atómica | Pasa |
 | III. Mínimo privilegio | Roles por acción, sin borrado ni comodines, Audit solo `PutItem`; CI sin llaves (OIDC) | Pasa |
 | IV. Verificación negativa | Pasa de DB simulada a DynamoDB Local; la prueba T14 actual simula Cognito y se reemplaza por una aserción sobre el template | Pasa |
-| V. Free Plan e higiene (v2.2.0) | Un solo `template.yaml`. PITR no es gratuito: parámetro apagado por defecto. Protección de borrado solo en producción para conservar `sam delete`. CloudTrail: primer trail de eventos de gestión gratuito. GuardDuty y Security Hub (pruebas de 30 días): parámetros apagados por defecto, sujetos al tipo de cuenta | Pasa con nota (ver Complexity Tracking) |
+| V. Free Plan e higiene (v2.2.0) | Un solo `template.yaml`. PITR no es gratuito: parámetro apagado por defecto. Protección de borrado solo en producción para conservar `sam delete`. CloudTrail: primer trail de eventos de gestión gratuito. GuardDuty y Security Hub (pruebas de 30 días): parámetros apagados por defecto, sujetos al tipo de cuenta. Los buckets con objetos bloquean `sam delete`, por lo que se añade `scripts/cleanup.ps1` (T078). Las pruebas de infraestructura corren para cada etapa (T008) | Pasa con nota (ver Complexity Tracking) |
 | VI. Transparencia y gobierno de IA | `AI_USAGE.md` se corrige (FR-030); logs sin PII (FR-015) | Pasa |
 | VII. Código mantenible | ESLint con complejidad ≤ 10, función ≤ 50 líneas, `no-explicit-any`; Prettier en CI; autorización/auditoría/errores centralizados en un solo módulo | Pasa |
 
@@ -86,6 +86,8 @@ backend/
 
 infra/template.yaml                # MFA, IAM, Audit, logs, CloudTrail, CORS, throttling, callbacks, PITR
 .github/workflows/ci.yml           # integración, cfn-lint, checkov, prettier, deploy con OIDC
+scripts/cleanup.ps1                # vacía los buckets de logs y frontend y ejecuta sam delete
+docs/free-plan-guide.md            # tipo de cuenta, parámetros opcionales, fecha fin de pruebas, limpieza
 eslint.config.js  .prettierrc      # reglas del principio VII
 policies/                          # se conserva como documentación de fase 2 (README aclara que no se aplica)
 docs/  AI_USAGE.md  specs/001-secure-donations/research.md   # coherencia documental

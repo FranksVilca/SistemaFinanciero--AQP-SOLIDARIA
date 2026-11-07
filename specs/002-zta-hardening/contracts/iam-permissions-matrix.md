@@ -10,19 +10,20 @@ Acciones de DynamoDB permitidas. Todo lo no listado está denegado. Sin comodine
 | GetProject | R | | | |
 | GetProjectStats | R | | | |
 | CreateProject | P | | | P |
-| PublishProject | R, U | | | P |
+| PublishProject | U | | | P |
 | CreateDonation | R | P, R | P, R | P |
 | SimulateDonation (solo etapa académica) | U | R, U | | P |
-| GetMyDonations | | R (incluye índice `donorSub-createdAt-index`) | | |
-| GetAuditEvents | | | | R (`Query`) |
+| GetMyDonations | | R (incluye índice `donorSub-createdAt-index`) | | P (solo denegaciones) |
+| GetAuditEvents | | | | R (`Query`), P (solo denegaciones) |
 
 ## Reglas verificadas por prueba
 
 1. Ninguna sentencia incluye `Delete*`, `BatchWrite*`, `Scan` ni `dynamodb:*`.
-2. En la tabla Audit solo aparece `PutItem` (escritura) y `Query`/`GetItem` únicamente en `GetAuditEvents`.
+2. En la tabla Audit solo aparece `PutItem` (escritura) y `Query` únicamente en `GetAuditEvents`.
 3. Cada función tiene su propio rol; no se comparten políticas entre funciones.
 4. La función `SimulateDonation` no existe en la etapa `production` (condición actual del template).
-5. Las funciones públicas no tienen acceso a Audit en absoluto: sus rutas no generan eventos de denegación, porque las acciones públicas siempre se permiten.
+5. Las tres funciones públicas no tienen acceso a Audit: sus acciones siempre se permiten y nunca se auditan (ver la regla de auditoría en [with-auth.md](with-auth.md)). `GetMyDonations` y `GetAuditEvents` solo escriben eventos de denegación.
+6. La prueba se ejecuta para cada etapa (`academic` y `production`); `SimulateDonation` solo existe en `academic`.
 
 ## Evidencia T10
 

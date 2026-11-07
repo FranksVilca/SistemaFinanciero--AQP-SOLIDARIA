@@ -43,10 +43,10 @@ Identificadores y comentarios en inglés, mensajes al usuario en español; funci
 
 **⚠️ CRITICAL**: ninguna historia empieza antes de terminar esta fase
 
-- [ ] T005 Create `backend/test/integration/globalSetup.ts`: wait for `DYNAMODB_ENDPOINT` (default `http://localhost:8000`), set test env vars for the four table names, create the four tables with the same key schemas and GSIs as `infra/template.yaml` (Projects `status-createdAt-index`, Donations `donorSub-createdAt-index`, Idempotency `pk` with TTL, Audit `eventType` + `timestamp#eventId`), and drop them on teardown
+- [ ] T005 Create `backend/test/integration/globalSetup.ts`: wait for `DYNAMODB_ENDPOINT` (default `http://localhost:8000`), set test env vars for the four table names, create the four tables with the same key schemas and GSIs as `infra/template.yaml` (Projects `status-createdAt-index`, Donations `donorSub-createdAt-index`, Idempotency `pk` with TTL, Audit `auditDay` (HASH, UTC date `YYYY-MM-DD`) + `timestamp#eventId` (RANGE)), and drop them on teardown
 - [ ] T006 [P] Create `backend/test/integration/helpers/events.ts`: builders for API Gateway HTTP API events with JWT claims for each role (`DONANTE`, `GESTOR`, `AUDITOR`, no identity, and a fake group `GESTOR_FAKE`), headers (case-insensitive `Idempotency-Key`), body, path parameters, and `requestId`
 - [ ] T007 [P] Create `backend/test/integration/helpers/seed.ts`: functions to insert published/draft projects and pending/confirmed donations directly into the tables, and to read an item back
-- [ ] T008 [P] Create `backend/test/infra/helpers/loadTemplate.ts`: parse `infra/template.yaml` with the `yaml` package registering custom tags (`!Ref`, `!Sub`, `!GetAtt`, `!Equals`, `!If`, `!Join`) as plain structures; export helpers to list functions, their policies, their events and their `Handler`
+- [ ] T008 [P] Create `backend/test/infra/helpers/loadTemplate.ts`: parse `infra/template.yaml` with the `yaml` package registering custom tags (`!Ref`, `!Sub`, `!GetAtt`, `!Equals`, `!If`, `!Join`) as plain structures; resolve parameters and `Conditions` for a given stage (`academic`, `production`) and parameter overrides (`EnablePitr`, `EnableGuardDuty`, `EnableSecurityHub`, `EnableCloudTrail`) via `loadTemplate(stage, overrides)`; export helpers to list functions, their policies, their events and their `Handler`; export `STAGES = ["academic", "production"]` so every infra test runs for each stage (constitution V, v2.2.0)
 - [ ] T009 Create `backend/test/integration/smoke.test.ts` proving the harness: put and get an item in each table and run a real `TransactWriteCommand`
 
 **Checkpoint**: `docker compose up -d` + `npm run test:integration --workspace=backend` pasa el smoke test
@@ -119,7 +119,9 @@ Identificadores y comentarios en inglés, mensajes al usuario en español; funci
 - [ ] T028 [P] [US3] Wrap `backend/src/donations/simulateDonation.ts` with `withAuth` using `loadResource` to load the donation and return `donorSub` as owner (action `SimulateDonation`); a missing identity now yields 401, not 403
 - [ ] T029 [P] [US3] Wrap `backend/src/donations/getMyDonations.ts` with `withAuth` using the new action `ViewMyDonations` (no longer `CreateDonation`)
 - [ ] T030 [P] [US3] Wrap `backend/src/audit/getAuditEvents.ts` with `withAuth` (action `ViewAudit`)
-- [ ] T031 [US3] Update the existing unit tests `backend/test/authz.test.ts`, `backend/test/projects.test.ts`, `backend/test/projectManagement.test.ts`, `backend/test/donationState.test.ts` and `backend/test/donationValidation.test.ts` to the new handler shape; delete `backend/test/bola.test.ts` once T019 replaces it
+- [ ] T075 [P] [US3] Integration test in `backend/test/integration/idempotencyConcurrency.test.ts` (replaces `backend/test/idempotency.test.ts` and `backend/test/concurrency.test.ts`): same key + same body → same donation and one record; same key + different body → 409; key isolated per donor; two identical requests fired in parallel with `Promise.all` create exactly one donation; two parallel confirmations of the same donation add the amount once
+- [ ] T076 [P] [US3] Integration test in `backend/test/integration/projects.test.ts` (replaces `backend/test/projects.test.ts` and `backend/test/projectManagement.test.ts`): list/get/stats return only `PUBLICADO` projects and never a donor identifier; a draft project returns 404 to visitors; manager creates a draft (201) and publishes it (200); publishing twice → 409; invalid body → 400
+- [ ] T031 [US3] Keep the pure unit test `backend/test/authz.test.ts` (adapt it to the `withAuth` era); once T011, T019, T075 and T076 pass, delete the mock-based tests `backend/test/bola.test.ts`, `backend/test/idempotency.test.ts`, `backend/test/concurrency.test.ts`, `backend/test/projects.test.ts`, `backend/test/projectManagement.test.ts`, `backend/test/donationState.test.ts` and `backend/test/donationValidation.test.ts`, since they mock the database and would break with the extra audit writes (FR-025, constitution VII)
 
 **Checkpoint**: T016–T019 pasan; añadir una función al template sin `withAuth` rompe T017
 
@@ -139,13 +141,13 @@ Identificadores y comentarios en inglés, mensajes al usuario en español; funci
 
 ### Implementation for User Story 4
 
-- [ ] T035 [US4] Rename `backend/src/audit/logAuditEvent.ts` to `backend/src/audit/recordAuditEvent.ts`; fields per `data-model.md` (`eventType`, `requestId`, `actorRef`, `action`, `resourceRef`, `outcome`, `reason?`); write with `ConditionExpression: attribute_not_exists(eventType)`; export no other writer
-- [ ] T036 [US4] Integrate `recordAuditEvent` in `backend/src/authz/withAuth.ts` (success and denied, reason codes `UNAUTHENTICATED`, `ROLE`, `OWNER`); catch write failures, log them with `logError` and keep the response
+- [ ] T035 [US4] Rename `backend/src/audit/logAuditEvent.ts` to `backend/src/audit/recordAuditEvent.ts`; fields per `data-model.md` (`eventType`, `requestId`, `actorRef`, `action`, `resourceRef`, `outcome`, `reason?`); compute `auditDay` as the UTC date `YYYY-MM-DD` of `timestamp` and keep `eventType` as a plain attribute; write with `ConditionExpression: attribute_not_exists(auditDay)`; export no other writer
+- [ ] T036 [US4] Integrate `recordAuditEvent` in `backend/src/authz/withAuth.ts` following the audit rule of `contracts/with-auth.md` (denials of any protected action are always audited with reason `UNAUTHENTICATED`, `ROLE` or `OWNER`; successes only for state-changing actions `CreateProject`, `PublishProject`, `CreateDonation`, `SimulateDonation`; public actions and read-only successes are never audited); catch write failures, log them with `logError` and keep the response
 - [ ] T037 [P] [US4] Remove the inline audit writes from `backend/src/projects/createProject.ts` and `backend/src/projects/publishProject.ts` (they stored the raw `sub` as `actorRef`) and let `withAuth` audit them
 - [ ] T038 [P] [US4] Update `backend/src/shared/logger.ts` to redact `sub`, `donorSub`, `email`, token-like fields and amounts; remove `donorSub` and `amountCents` from log calls in `backend/src/donations/createDonation.ts` and `backend/src/donations/simulateDonation.ts`
-- [ ] T039 [US4] Update `backend/src/audit/getAuditEvents.ts` to return `SUCCESS` and `DENIED` events ordered by most recent, keeping the response shape of `docs/api.yaml`
-- [ ] T040 [US4] In `infra/template.yaml`: add a resource policy on `AuditTable` that denies `dynamodb:UpdateItem`, `dynamodb:DeleteItem` and `dynamodb:BatchWriteItem` to every principal except the deploy role; add `AccessLogSettings` to `HttpApi` writing to a dedicated log group (so gateway 401s are traceable)
-- [ ] T041 [US4] Update `backend/test/audit.test.ts` to the new module name and event shape
+- [ ] T039 [US4] Update `backend/src/audit/getAuditEvents.ts` to query the `auditDay` partitions from the most recent day backwards (at most 7 days, 50 events in total, newest first), with optional `eventType` as a filter and `from`/`to` mapped to the day range; return `SUCCESS` and `DENIED` events, keeping the response shape of `docs/api.yaml` (update `docs/api.yaml` if `eventType` semantics change)
+- [ ] T040 [US4] In `infra/template.yaml`: change the `AuditTable` key schema to `auditDay` (HASH) + `timestamp#eventId` (RANGE) (the table is replaced on deploy, acceptable for the academic stage and noted in `docs/free-plan-guide.md`); add a resource policy on `AuditTable` that denies `dynamodb:UpdateItem`, `dynamodb:DeleteItem` and `dynamodb:BatchWriteItem` to every principal except the deploy role; add `AccessLogSettings` to `HttpApi` writing to a dedicated log group (so gateway 401s are traceable)
+- [ ] T041 [US4] Delete the mock-based `backend/test/audit.test.ts` once T032 and T033 pass (they cover the same behavior against a real table)
 
 **Checkpoint**: T032–T034 pasan
 
@@ -159,7 +161,7 @@ Identificadores y comentarios en inglés, mensajes al usuario en español; funci
 
 ### Tests for User Story 5
 
-- [ ] T042 [US5] Infra test in `backend/test/infra/iamMatrix.test.ts`: encode the matrix from `contracts/iam-permissions-matrix.md`; assert per function the exact allowed actions and tables, no `Delete*`, `BatchWrite*`, `Scan` or `dynamodb:*`, no wildcard resources, Audit only `PutItem` (plus `Query`/`GetItem` for `GetAuditEvents`), public functions have no access to Audit, one role per function, `SimulateDonation` conditioned on stage `academic`
+- [ ] T042 [US5] Infra test in `backend/test/infra/iamMatrix.test.ts`: encode the matrix from `contracts/iam-permissions-matrix.md`; assert per function the exact allowed actions and tables, no `Delete*`, `BatchWrite*`, `Scan` or `dynamodb:*`, no wildcard resources, Audit only `PutItem` (plus `Query` for `GetAuditEvents`), the three public functions have no access to Audit, `GetMyDonations` and `GetAuditEvents` have `PutItem` on Audit only for denial events, one role per function, `SimulateDonation` conditioned on stage `academic`; run with `describe.each(STAGES)` so both stages are checked
 
 ### Implementation for User Story 5
 
@@ -179,19 +181,20 @@ Identificadores y comentarios en inglés, mensajes al usuario en español; funci
 
 ### Tests for User Story 6
 
-- [ ] T046 [US6] Infra test in `backend/test/infra/telemetryAndEdge.test.ts`: log groups have `RetentionInDays` 14 and are assigned in `Globals` with JSON format; a `AWS::CloudTrail::Trail` exists with a private S3 bucket (public access blocked, lifecycle rule); CORS `AllowOrigins` contains no `*`; each public route has its own throttling in `RouteSettings`; Cognito callback and logout URLs reference the CloudFront domain and `localhost` only under the academic stage; CSP `connect-src` includes the Cognito domain
+- [ ] T046 [US6] Infra test in `backend/test/infra/telemetryAndEdge.test.ts`: log groups have `RetentionInDays` 14 and are assigned in `Globals` with JSON format; a `AWS::CloudTrail::Trail` exists with a private S3 bucket (public access blocked, lifecycle rule); CORS `AllowOrigins` contains no `*`; each public route has its own throttling in `RouteSettings`; Cognito callback and logout URLs reference the CloudFront domain and `localhost` only under the academic stage; CSP `connect-src` includes the Cognito domain; run with `describe.each(STAGES)` (the `localhost` rules must differ by stage, and `production` must keep every restriction)
 
 ### Implementation for User Story 6
 
 - [ ] T047 [US6] In `infra/template.yaml`: add `AWS::Logs::LogGroup` (`RetentionInDays: 14`) shared by all functions via `Globals.Function.LoggingConfig` (`LogFormat: JSON`), and use `RetentionInDays: 14` for the API access log group created in T040
-- [ ] T048 [US6] In `infra/template.yaml`: add the CloudTrail resources (`AWS::S3::Bucket` for logs with public access blocked and a 90-day lifecycle, `AWS::S3::BucketPolicy` for CloudTrail, `AWS::CloudTrail::Trail` for management events); add a parameter to disable the trail when the account already has one
+- [ ] T048 [US6] In `infra/template.yaml`: add the CloudTrail resources (`AWS::S3::Bucket` for logs with public access blocked and a 90-day lifecycle, `AWS::S3::BucketPolicy` for CloudTrail, `AWS::CloudTrail::Trail` for management events); add parameter `EnableCloudTrail` (default `"true"`) to disable the trail when the account already has one; the log bucket must not use `Retain` and must be emptiable by `scripts/cleanup.ps1` (T078) so `sam delete` can finish
 - [ ] T049 [US6] In `infra/template.yaml`: restrict CORS `AllowOrigins` to the CloudFront domain (plus `http://localhost:3000` only when `IsAcademicStage`), add per-route `RouteSettings` throttling with lower limits for the three public GET routes, set Cognito `CallbackURLs` and `LogoutURLs` to the CloudFront domain (plus localhost only in the academic stage), and add the Cognito domain (`https://*.amazoncognito.com`) to the CSP `connect-src`
 
 ### Detección con pruebas gratuitas de 30 días (FR-031)
 
 - [ ] T072 [US6] In `infra/template.yaml`: add parameters `EnableGuardDuty` and `EnableSecurityHub` (type String, allowed `"true"`/`"false"`, default `"false"`) with conditions, and the resources `AWS::GuardDuty::Detector` (`Enable: true`) and the Security Hub hub, each created only when its condition is true; add the trial end date reminder to the parameter descriptions
-- [ ] T073 [US6] Infra test in `backend/test/infra/detection.test.ts`: both parameters default to `"false"`, resources exist only under their conditions, and no other resource depends on them
-- [ ] T074 [US6] Write `docs/free-plan-guide.md`: how to confirm the account plan type in Billing, how to enable/disable GuardDuty and Security Hub (`sam deploy --parameter-overrides EnableGuardDuty=true`), the 30-day trial end date, what is excluded and why (WAF, SMS MFA, Verified Permissions, Organizations), and the single-template rule
+- [ ] T073 [US6] Infra test in `backend/test/infra/detection.test.ts`: both parameters default to `"false"`, resources exist only under their conditions, and no other resource depends on them; run with `describe.each(STAGES)`
+- [ ] T074 [US6] Write `docs/free-plan-guide.md`: how to confirm the account plan type in Billing, how to enable/disable GuardDuty and Security Hub (`sam deploy --parameter-overrides EnableGuardDuty=true`), the 30-day trial end date, what is excluded and why (WAF, SMS MFA, Verified Permissions, Organizations), and the single-template rule, plus the cleanup procedure of T078
+- [ ] T078 [US6] Create `scripts/cleanup.ps1`: empty the CloudTrail log bucket and the frontend bucket (including object versions), then run `sam delete`; refuse to run against a stage named `production` unless `-Force` is passed. A non-empty bucket otherwise blocks `sam delete` (constitution V)
 
 **Checkpoint**: T046 y T073 pasan
 
@@ -227,7 +230,7 @@ Identificadores y comentarios en inglés, mensajes al usuario en español; funci
 
 ### Tests for User Story 8
 
-- [ ] T056 [US8] Infra test in `backend/test/infra/dataProtection.test.ts`: Projects, Donations and Audit have `DeletionProtectionEnabled` tied to stage `production`, `PointInTimeRecoverySpecification` tied to parameter `EnablePitr`, and Idempotency has neither
+- [ ] T056 [US8] Infra test in `backend/test/infra/dataProtection.test.ts`: Projects, Donations and Audit have `DeletionProtectionEnabled` tied to stage `production`, `PointInTimeRecoverySpecification` tied to parameter `EnablePitr`, and Idempotency has neither; run with `describe.each(STAGES)` and with `EnablePitr` on and off
 
 ### Implementation for User Story 8
 
@@ -299,7 +302,7 @@ Identificadores y comentarios en inglés, mensajes al usuario en español; funci
 
 ### Orden recomendado del template (un solo editor a la vez)
 
-T015 → T040 → T043 → T044 → T047 → T048 → T049 → T057 → T061
+T015 → T040 → T043 → T044 → T047 → T048 → T049 → T072 → T057 → T061
 
 ### Dentro de cada historia
 

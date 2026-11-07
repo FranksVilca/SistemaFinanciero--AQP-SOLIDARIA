@@ -26,7 +26,10 @@ withAuth<TResource>(
 4. Evaluar la política con rol, grupo, acción, propietario y estado. Cualquier excepción del motor → **denegar**.
 5. Si `sensitive`: revalidar la sesión; fallo o timeout → 401, auditado como `SESSION_REVOKED`.
 6. Ejecutar `handlerFn`.
-7. Auditar el resultado (éxito o denegado) mediante `recordAuditEvent`.
+7. Auditar mediante `recordAuditEvent` según esta regla:
+   - **Denegaciones** de cualquier acción protegida: siempre.
+   - **Éxitos**: solo en acciones que cambian estado (`CreateProject`, `PublishProject`, `CreateDonation`, `SimulateDonation`).
+   - **Acciones públicas** (`ListProjects`, `ViewProject`, `ViewProjectStats`) y éxitos de lectura (`ViewMyDonations`, `ViewAudit`): nunca. Así las funciones públicas no necesitan acceso a la tabla de auditoría.
 8. Mapear errores tipados a HTTP; nunca devolver el stack.
 
 ## Resultados
@@ -38,7 +41,8 @@ withAuth<TResource>(
 | Recurso ajeno (BOLA) | 403 | `DENIED / OWNER` |
 | Sesión revocada o no verificable (acción sensible) | 401 | `DENIED / SESSION_REVOKED` |
 | Error del motor de política | 403 | `DENIED` |
-| Éxito | el del handler | `SUCCESS` |
+| Éxito de acción que cambia estado | el del handler | `SUCCESS` |
+| Éxito de lectura o acción pública | el del handler | ninguna |
 | Fallo al escribir la auditoría | no cambia la respuesta | error en logs |
 
 ## Prueba de cobertura (obligatoria en CI)
