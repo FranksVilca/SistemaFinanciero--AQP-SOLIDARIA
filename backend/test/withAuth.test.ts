@@ -8,12 +8,12 @@ import { AUTHZ_ACTIONS } from "../src/shared/constants.js";
 import { NotFoundError } from "../src/shared/errors.js";
 import { buildSuccessResponse } from "../src/shared/response.js";
 
-const donorEvent = (sub = "donor-1") => ({
-  requestContext: { requestId: "req-1", authorizer: { jwt: { claims: { sub, "cognito:groups": '["DONANTE"]' } } } },
+const claimsEvent = (claims: Record<string, unknown>, requestId = "req-1") => ({
+  requestContext: { requestId, authorizer: { jwt: { claims } } },
 });
-const eventWithGroups = (groups: string) => ({
-  requestContext: { requestId: "req-2", authorizer: { jwt: { claims: { sub: "user-1", "cognito:groups": groups } } } },
-});
+const donorEvent = (sub = "donor-1") => claimsEvent({ sub, token_use: "access", "cognito:groups": '["DONANTE"]' });
+const eventWithGroups = (groups: string) =>
+  claimsEvent({ sub: "user-1", token_use: "access", "cognito:groups": groups }, "req-2");
 
 const okHandler = () => vi.fn(async () => buildSuccessResponse({ ok: true }));
 
@@ -31,6 +31,25 @@ describe("withAuth", () => {
 
     expect(response.statusCode).toBe(401);
     expect(logic).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 for an ID token even when its claims look valid", async () => {
+    const logic = okHandler();
+    const handler = withAuth(logic, { action: AUTHZ_ACTIONS.createDonation, resourceType: "Donation" });
+    const idTokenEvent = claimsEvent({ sub: "donor-1", token_use: "id", "cognito:groups": '["DONANTE"]' });
+
+    const response = await handler(idTokenEvent);
+
+    expect(response.statusCode).toBe(401);
+    expect(logic).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 when the claims do not state the token type (fail closed)", async () => {
+    const handler = withAuth(okHandler(), { action: AUTHZ_ACTIONS.createDonation, resourceType: "Donation" });
+
+    const response = await handler(claimsEvent({ sub: "donor-1", "cognito:groups": '["DONANTE"]' }));
+
+    expect(response.statusCode).toBe(401);
   });
 
   it("returns 403 without running the business logic when the role is not allowed", async () => {

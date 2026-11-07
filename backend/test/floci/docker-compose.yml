@@ -1,0 +1,8 @@
+services:
+  floci:
+    image: floci/floci:2.4.0
+    environment:
+      # Without this flag Floci accepts every request and the IAM evidence would prove nothing.
+      FLOCI_SERVICES_IAM_ENFORCEMENT_ENABLED: "true"
+    ports:
+      - "4566:4566"

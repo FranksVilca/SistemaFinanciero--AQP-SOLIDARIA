@@ -87,12 +87,29 @@ describe("claims extraction (T11)", () => {
     const principal = extractAuthClaims({
       requestContext: {
         authorizer: {
-          jwt: { claims: { sub: "sub-123", email: "donor@aqpsolidaria.pe", "cognito:groups": '["DONANTE"]' } },
+          jwt: {
+            claims: {
+              sub: "sub-123",
+              token_use: "access",
+              email: "donor@aqpsolidaria.pe",
+              "cognito:groups": '["DONANTE"]',
+            },
+          },
         },
       },
     });
 
     expect(principal).toEqual({ sub: "sub-123", email: "donor@aqpsolidaria.pe", groups: ["DONANTE"] });
+  });
+
+  it("ignores claims of an ID token", () => {
+    const principal = extractAuthClaims({
+      requestContext: {
+        authorizer: { jwt: { claims: { sub: "sub-123", token_use: "id", "cognito:groups": ["DONANTE"] } } },
+      },
+    });
+
+    expect(principal).toBeUndefined();
   });
 
   it.each([

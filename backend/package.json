@@ -4,20 +4,27 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/writeDistPackage.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:infra": "vitest run test/infra --config vitest.infra.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test:floci": "vitest run --config vitest.floci.config.ts"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.758.0",
-    "@aws-sdk/client-verifiedpermissions": "^3.758.0",
     "@aws-sdk/lib-dynamodb": "^3.758.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@aws-sdk/client-cloudformation": "^3.1164.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.1164.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.1164.0",
+    "@aws-sdk/client-iam": "^3.1164.0",
     "@types/node": "^22.13.0",
     "typescript": "^5.8.0",
-    "vitest": "^3.0.5"
+    "vitest": "^3.0.5",
+    "yaml": "^2.9.1"
   }
 }

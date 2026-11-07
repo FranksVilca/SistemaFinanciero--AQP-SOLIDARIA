@@ -10,6 +10,11 @@ Se introdujo a propósito cada fallo en el árbol de trabajo local, se ejecutó 
 | b | Misma sentencia | `checkov` (`.checkov.yaml`) | No la detecta (38 verificaciones pasan). |
 | c | Handler que no usa `withAuth` (`projects/unprotected.handler`) en el template | `infra-tests` (`withAuthCoverage.test.ts`) | **Falla**: 2 pruebas (etapas `academic` y `production`). |
 
+| d | `GetProjectFunction` con `dynamodb:DeleteItem` | `emulator` (`iamEnforcement.test.ts`, Floci con IAM activo) | **Falla**: 1 prueba (el borrado deja de recibir `AccessDenied`). |
+| e | `CreateProjectFunction` sin permiso sobre la tabla de auditoría | `emulator` | **Falla**: 2 pruebas (el handler no puede escribir su evento). |
+
+Nota: `cfn-lint` solo valida la parte SAM del template si `aws-sam-translator` está instalado; sin él la omite sin avisar. El CI lo instala explícitamente (`pip install cfn-lint aws-sam-translator checkov`).
+
 ## Conclusión
 
 Las tres regresiones conocidas rompen el CI. El permiso excesivo (b) lo detecta únicamente la prueba de infraestructura propia (`iamMatrix.test.ts`); `cfn-lint` y `checkov` con la configuración actual no lo señalan, así que la prueba propia es la defensa real contra ese caso y no debe eliminarse.

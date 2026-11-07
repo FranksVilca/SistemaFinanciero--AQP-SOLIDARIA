@@ -28,6 +28,22 @@ npm run test
 
 Esperado: confirmar donación devuelve 200 y el total del proyecto sube una vez (US1); matriz rol × acción y BOLA rechazadas sin cambiar estado (US3); idempotencia (misma clave: misma donación, otro monto: 409); eventos `DENIED` con actor pseudonimizado (US4).
 
+## 2b. Emulador de AWS (Floci) con IAM activo
+
+```bash
+docker compose -f backend/test/floci/docker-compose.yml up -d   # Floci 2.4.0 con FLOCI_SERVICES_IAM_ENFORCEMENT_ENABLED=true
+npm run test:floci
+```
+
+Sin esa opción Floci acepta cualquier operación y las pruebas de IAM no demostrarían nada; el `docker-compose.yml` ya la activa.
+
+Esperado (60 pruebas):
+- **IAM (T10):** cada handler funciona con la política exacta de su rol en `infra/template.yaml` y todo lo demás recibe `AccessDeniedException`.
+- **Cognito (T11, T14):** un usuario sin segundo factor no recibe tokens (`MFA_SETUP`); un ID token da 401 en las rutas protegidas.
+- **Despliegue:** `infra/template.yaml` despliega como stack (SAM incluido) en la etapa académica, con y sin las opciones de detección.
+
+Límites del emulador: no ejecuta el JWT authorizer de API Gateway, no ejecuta las Lambdas y no puede desplegar la etapa `production` (ver `evidence/test-run-report.md`, sección 3).
+
 ## 3. Verificaciones del template
 
 ```bash
@@ -49,9 +65,9 @@ Comprobar y guardar en `evidence/`:
 
 | Prueba | Cómo | Esperado |
 |---|---|---|
-| Token falso, vencido o ID token | `curl` con `Authorization: Bearer` alterado en una ruta protegida | 401 de la pasarela |
+| Token falso, vencido o ID token (el backend ya rechaza el ID token y se prueba en el emulador; aquí se comprueba el authorizer) | `curl` con `Authorization: Bearer` alterado en una ruta protegida | 401 de la pasarela |
 | MFA | Iniciar sesión como gestor sin TOTP configurado | Se exige enrolamiento; no se emiten tokens |
-| T10 | Invocar una operación fuera de la matriz IAM | `AccessDeniedException` |
+| T10 (ya demostrado en el emulador; confirmación opcional) | Simulador de IAM o credenciales del rol, ver `evidence/t10-access-denied.md` | `AccessDeniedException` |
 | Sesión revocada | Revocar el refresh token y llamar a una acción sensible con el access token aún vigente | 401 |
 | CSP y login | Iniciar sesión en el dominio de CloudFront | El intercambio de código con Cognito no es bloqueado |
 | Auditoría inmutable | Intentar `UpdateItem` sobre la tabla Audit con un rol de función | `AccessDenied` |

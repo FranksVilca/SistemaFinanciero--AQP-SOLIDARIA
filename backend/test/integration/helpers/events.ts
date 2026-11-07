@@ -25,6 +25,8 @@ export interface EventOptions {
   headers?: Record<string, string>;
   pathParameters?: Record<string, string>;
   queryStringParameters?: Record<string, string>;
+  /** Cognito token type carried by the claims; protected actions only accept "access". */
+  tokenUse?: string;
 }
 
 export function identityFor(role: TestRole, sub: string = `${role.toLowerCase()}-${randomUUID()}`): TestIdentity {
@@ -32,8 +34,10 @@ export function identityFor(role: TestRole, sub: string = `${role.toLowerCase()}
 }
 
 export function buildEvent(options: EventOptions = {}): TestEvent {
-  const { identity, body, rawBody, headers, pathParameters, queryStringParameters } = options;
-  const claims = identity ? { sub: identity.sub, "cognito:groups": JSON.stringify(identity.groups) } : undefined;
+  const { identity, body, rawBody, headers, pathParameters, queryStringParameters, tokenUse = "access" } = options;
+  const claims = identity
+    ? { sub: identity.sub, token_use: tokenUse, "cognito:groups": JSON.stringify(identity.groups) }
+    : undefined;
 
   return {
     headers: { authorization: "Bearer test-access-token", ...headers },

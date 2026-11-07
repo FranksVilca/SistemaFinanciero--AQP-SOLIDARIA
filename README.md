@@ -71,7 +71,13 @@ npm run test:integration
 
 # Pruebas sobre infra/template.yaml, en las etapas academic y production
 npm run test:infra
+
+# Emulador de AWS (Floci) con IAM activo: políticas IAM reales del template, Cognito con MFA y despliegue del stack
+docker compose -f backend/test/floci/docker-compose.yml up -d
+npm run test:floci
 ```
+
+El mapeo de cada principio de NIST SP 800-207 a su evidencia está en [docs/nist-800-207-mapping.md](docs/nist-800-207-mapping.md).
 
 El CI ejecuta además `cfn-lint`, `checkov` y `npm run format:check`; el despliegue solo ocurre si todo pasa.
 

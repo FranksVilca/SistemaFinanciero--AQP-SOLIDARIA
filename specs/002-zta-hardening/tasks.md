@@ -282,8 +282,26 @@ Identificadores y comentarios en inglés, mensajes al usuario en español; funci
 
 - [X] T068 Update `backend/test/acceptance/t01-t14.sh` so T10 and T14 point to the new evidence and tests, and keep T01–T14 runnable
 - [X] T069 Run the whole of `quickstart.md` sections 1–3 locally and fix failures; confirm total CI time under 10 minutes (SC-012)
-- [ ] T070 Execute the real-AWS checks of `quickstart.md` section 4 (token falso/vencido/ID token, MFA, T10, sesión revocada, login con CSP, auditoría inmutable, PITR en producción) and store the outputs in `evidence/`; mark any not executed as pending in `docs/zta-hallazgos-y-mejoras.md`
+- [ ] T070 Execute with a real AWS account only what no emulator can show (see `evidence/test-run-report.md`, section 3): the 401 of the API Gateway JWT authorizer for forged, expired and ID tokens, the Cognito Hosted UI with TOTP enrollment in a browser, revocation against the real `userInfo` endpoint, the CSP with the Cognito code exchange, `DeletionProtectionEnabled`/PITR in production, and (optional) the real IAM confirmation of T10. Store the outputs in `evidence/`. Pending: the environment has no valid AWS credentials.
 - [X] T071 Regenerate `docs/diagrams/zta-architecture-target.png` only if the implementation deviates from `zta-architecture-target.d2`; otherwise record in `docs/arquitectura-comparacion.md` that the target is now the current architecture
+
+---
+
+## Phase 14: Cierre de pendientes con emulador y mapeo NIST
+
+**Purpose**: reducir al mínimo la evidencia que exige AWS real (T10, T11, T14) y demostrar los 7 principios. Se añadió tras revisar qué cubría cada nivel de prueba.
+
+- [X] T080 [P] Reject non-access tokens in `backend/src/authz/claims.ts`: a claim set whose `token_use` is not `access` yields no principal (401); update `backend/test/integration/helpers/events.ts` and the unit tests so events carry `token_use: "access"`
+- [X] T081 [P] Integration test `backend/test/integration/idToken.test.ts`: an ID token gets 401 on every protected route, changes nothing and is audited as `UNAUTHENTICATED`
+- [X] T082 Create the Floci suite scaffolding: `backend/test/floci/docker-compose.yml` (image pinned to 2.4.0, IAM enforcement on), `backend/vitest.floci.config.ts`, `backend/test/floci/globalSetup.ts` (tables, one IAM user per function holding the inline policy of its role in `infra/template.yaml`), `backend/test/floci/helpers/policyResolver.ts`, `npm run test:floci`; move the table definitions to `backend/test/integration/helpers/tableDefinitions.ts`
+- [X] T083 Create `backend/test/floci/iamEnforcement.test.ts` (T10): each real handler works with its minimal role and every operation outside the contract (`DeleteItem`, `BatchWriteItem`, `Scan`, and writes outside the matrix) gets `AccessDeniedException`
+- [X] T084 Create `backend/test/floci/cognito.test.ts` (T11, T14): a user pool built from the MFA settings of the template; a user without a second factor receives `MFA_SETUP` and no tokens; after TOTP enrollment tokens carry `token_use`; the claims of an ID token get 401 and those of an access token pass
+- [X] T085 Create `backend/test/floci/stackDeployment.test.ts`: deploy `infra/template.yaml` (SAM included) as a stack and check functions, tables, MFA, log retention, audit key and the optional detection services
+- [X] T086 Fix the `Query` policies of `ListProjectsFunction` and `GetMyDonationsFunction` in `infra/template.yaml` (table ARN is the required resource; the index ARN is added); found by T083
+- [X] T087 Add `FrontendBucketPolicy` to `infra/template.yaml` (CloudFront OAC read only, TLS only; the site could not be read without it) and `backend/test/infra/networkSecurity.test.ts` for NIST principle 2
+- [X] T088 Write `docs/nist-800-207-mapping.md` (7 principles, PA/PEP/PE, evidence, state) and `backend/test/infra/nistMapping.test.ts`, which fails if a principle is missing or a cited file does not exist
+- [X] T089 Add the `emulator` job to `.github/workflows/ci.yml` as a deploy gate and install `aws-sam-translator` with `cfn-lint` (without it the SAM part is silently skipped)
+- [X] T090 Update `evidence/t10-access-denied.md`, `evidence/test-run-report.md`, `evidence/ci-negative-checks.md`, `specs/002-zta-hardening/quickstart.md`, `README.md`, `AI_USAGE.md` and `docs/zta-hallazgos-y-mejoras.md` with the new evidence and counts
 
 ---
 

@@ -17,7 +17,7 @@ afterEach(() => vi.restoreAllMocks());
 const eventOf = (groups: string) => ({
   requestContext: {
     requestId: "req-audit",
-    authorizer: { jwt: { claims: { sub: "user-1", "cognito:groups": groups } } },
+    authorizer: { jwt: { claims: { sub: "user-1", token_use: "access", "cognito:groups": groups } } },
   },
 });
 

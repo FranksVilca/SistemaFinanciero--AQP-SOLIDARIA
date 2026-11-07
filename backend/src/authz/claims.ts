@@ -30,9 +30,17 @@ export function parseGroupsClaim(rawGroups: unknown): string[] {
   return trimmed.split(/[\s,]+/).filter(Boolean);
 }
 
+/** Cognito marks access tokens with `token_use: "access"` and ID tokens with `"id"`. */
+export const ACCESS_TOKEN_USE = "access";
+
+/**
+ * Builds the principal from the claims verified by the gateway. Only access tokens are accepted: an ID token
+ * (or a claim set without `token_use`) yields no principal, so a protected action answers 401. The gateway
+ * already rejects ID tokens through the scope check; this is the second, independent layer.
+ */
 export function extractAuthClaims(event: ApiEvent): AuthPrincipal | undefined {
   const claims = event.requestContext?.authorizer?.jwt?.claims;
-  if (!claims?.sub) return undefined;
+  if (!claims?.sub || claims.token_use !== ACCESS_TOKEN_USE) return undefined;
 
   return {
     sub: String(claims.sub),

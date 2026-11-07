@@ -88,3 +88,11 @@ Fuente: documentación de AWS consultada el 2026-11-08.
 
 - **Decision**: eliminar `cedarAdapter.ts`, `getAuthorizer()`, `cedarEquivalence.test.ts` y la dependencia `client-verifiedpermissions`. Conservar `policies/` con un README que diga "fase 2, no aplicado". Corregir `AI_USAGE.md` y marcar el estado de H1–H11 al cerrar.
 - **Alternatives**: conectar Verified Permissions ahora: crea Policy Store, latencia y costo, y la spec lo dejó en fase 2.
+
+## 11. Emulador Floci como nivel de prueba (añadido tras la implementación)
+
+- **Decision**: usar Floci 2.4.0 con `FLOCI_SERVICES_IAM_ENFORCEMENT_ENABLED=true` para tres cosas que DynamoDB Local no puede probar: `AccessDenied` real de IAM con las políticas del template (T10), el MFA obligatorio de Cognito y los tipos de token (T14, T11) y el despliegue del stack. DynamoDB Local se mantiene para las pruebas de datos porque es más rápido y no tiene estado compartido.
+- **Rationale**: se comprobó a mano que, sin la opción, Floci acepta cualquier operación (una prueba de IAM sería un simulacro) y que con ella devuelve `AccessDeniedException`. Los roles que crea el stack en Floci no llevan las políticas en línea, por lo que las pruebas usan usuarios IAM con la política exacta de cada función, resuelta desde el template.
+- **Hallazgos que produjo**: la política de `Query` sobre índices era demasiado estrecha (la referencia de autorización exige el ARN de la tabla); `cfn-lint` omite la parte SAM si no está `aws-sam-translator`; el bucket del frontend no tenía política para CloudFront.
+- **Límites**: no ejecuta el JWT authorizer de API Gateway ni las Lambdas, y no despliega la etapa `production` (su comprobación estática rechaza las ramas `Fn::If` que genera SAM alrededor de la función de simulación; el traductor SAM real propaga la condición, y CloudFormation real las acepta). Lo que sigue exigiendo AWS real está en `evidence/test-run-report.md`, sección 3.
+- **Alternatives**: LocalStack (la aplicación de IAM no está disponible en su edición gratuita, según lo que se conoce; no se verificó) y no usar emulador (T10, T11 y T14 quedarían solo como procedimientos manuales).

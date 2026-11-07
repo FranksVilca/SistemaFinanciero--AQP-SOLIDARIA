@@ -77,6 +77,23 @@ jobs:
       - name: Template assertions for every stage
         run: npm run test:infra
 
+  emulator:
+    # Real IAM policies of the template, Cognito with mandatory MFA and the stack deployment, against Floci with IAM enforcement on.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Start Floci with IAM enforcement
+        run: docker run -d --name floci -p 4566:4566 -e FLOCI_SERVICES_IAM_ENFORCEMENT_ENABLED=true floci/floci:2.4.0
+      - name: Emulator tests (T10 AccessDenied, T11 ID token, T14 mandatory MFA, stack deployment)
+        run: npm run test:floci
+        env:
+          FLOCI_ENDPOINT: http://localhost:4566
+
   iac-scan:
     runs-on: ubuntu-latest
     steps:
@@ -84,7 +101,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install cfn-lint checkov
+      - run: pip install cfn-lint aws-sam-translator checkov
       - name: cfn-lint
         run: cfn-lint
       - name: checkov (skips are justified in .checkov.yaml)
@@ -92,7 +109,7 @@ jobs:
 
   deploy:
     # Only when every gate passed, on the main branch, and when a deploy role (OIDC, no long-lived keys) is configured.
-    needs: [lint-format, typecheck, unit, integration, infra-tests, iac-scan]
+    needs: [lint-format, typecheck, unit, integration, infra-tests, emulator, iac-scan]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.AWS_DEPLOY_ROLE_ARN != ''
     runs-on: ubuntu-latest
     permissions:

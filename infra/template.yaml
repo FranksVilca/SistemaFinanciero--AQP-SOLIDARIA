@@ -468,7 +468,10 @@ Resources:
           Statement:
             - Effect: Allow
               Action: dynamodb:Query
-              Resource: !Sub "${ProjectsTable.Arn}/index/status-createdAt-index"
+              # Query requires the table ARN (required resource type) and accepts the index ARN.
+              Resource:
+                - !GetAtt ProjectsTable.Arn
+                - !Sub "${ProjectsTable.Arn}/index/status-createdAt-index"
       Events:
         PublicGet:
           Type: HttpApi
@@ -646,7 +649,10 @@ Resources:
           Statement:
             - Effect: Allow
               Action: dynamodb:Query
-              Resource: !Sub "${DonationsTable.Arn}/index/donorSub-createdAt-index"
+              # Query requires the table ARN (required resource type) and accepts the index ARN.
+              Resource:
+                - !GetAtt DonationsTable.Arn
+                - !Sub "${DonationsTable.Arn}/index/donorSub-createdAt-index"
             - Effect: Allow
               Action: dynamodb:PutItem
               Resource: !GetAtt AuditTable.Arn
@@ -700,6 +706,34 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+
+  # The bucket is private: only this distribution may read it (origin access control), and only over TLS.
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${FrontendBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt FrontendBucket.Arn
+              - !Sub "${FrontendBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
 
   CloudFrontOriginAccessControl:
     Type: AWS::CloudFront::OriginAccessControl
