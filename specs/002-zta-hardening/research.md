@@ -61,9 +61,20 @@ Cada decisión se tomó leyendo el código y el template actuales. Lo marcado **
 
 ## 8. Protección de datos
 
-- **Decision**: `DeletionProtectionEnabled` y `PointInTimeRecoverySpecification` en Projects, Donations y Audit, activados con una condición de etapa `production` (protección) y parámetro `EnablePitr` (default `true`).
+- **Decision**: `DeletionProtectionEnabled` y `PointInTimeRecoverySpecification` en Projects, Donations y Audit, activados con una condición de etapa `production` (protección) y parámetro `EnablePitr` (default `false`; se enciende al desplegar `production`).
 - **Rationale**: la protección de borrado impediría `sam delete` en la etapa académica (constitución V).
 - **Alternatives**: protección siempre activa: rompe la limpieza. Backups bajo demanda de AWS Backup: más piezas.
+
+## 8b. Servicios del plan gratuito y pruebas de 30 días
+
+Fuente: documentación de AWS consultada el 2026-11-08.
+
+- **Plan gratuito**: 6 meses o hasta agotar los créditos (USD 100 al registrarse, hasta 100 más por actividades); luego la cuenta se cierra. Solo da acceso a servicios seleccionados. Unirse a AWS Organizations lo convierte en plan de pago.
+- **Pruebas de corta duración** (por ejemplo GuardDuty, 30 días por región): la tabla comparativa de AWS las lista para el **plan de pago**. Hay que confirmar el tipo de cuenta en Billing antes de activarlas.
+- **Decision**: GuardDuty (`AWS::GuardDuty::Detector`) y Security Hub como parámetros `EnableGuardDuty` y `EnableSecurityHub`, apagados por defecto, en el mismo `template.yaml`. Documentar la fecha de fin de prueba (30 días desde la activación). Se apagan al terminar o se acepta el costo de forma consciente.
+- **Security Hub**: no pude confirmar su prueba gratuita en la documentación consultada; se valida en la consola de la cuenta antes de activarlo **(verificar)**.
+- **Excluidos**: WAF (no se asocia a una HTTP API; los planes planos de CloudFront que lo incluyen no están disponibles en cuentas del plan gratuito), SMS MFA (necesita número de origen y sandbox, cobra por mensaje y, una vez configurado, no se puede quitar como factor), Verified Permissions (cobro por solicitud; su tramo gratuito no está confirmado), varias cuentas (Organizations).
+- **Un solo template**: sin etapa `local`; el emulador despliega el mismo archivo y las pruebas de infraestructura corren para cada etapa.
 
 ## 9. CI
 

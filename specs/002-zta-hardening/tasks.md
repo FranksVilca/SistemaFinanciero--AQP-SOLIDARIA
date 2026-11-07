@@ -187,7 +187,13 @@ Identificadores y comentarios en inglés, mensajes al usuario en español; funci
 - [ ] T048 [US6] In `infra/template.yaml`: add the CloudTrail resources (`AWS::S3::Bucket` for logs with public access blocked and a 90-day lifecycle, `AWS::S3::BucketPolicy` for CloudTrail, `AWS::CloudTrail::Trail` for management events); add a parameter to disable the trail when the account already has one
 - [ ] T049 [US6] In `infra/template.yaml`: restrict CORS `AllowOrigins` to the CloudFront domain (plus `http://localhost:3000` only when `IsAcademicStage`), add per-route `RouteSettings` throttling with lower limits for the three public GET routes, set Cognito `CallbackURLs` and `LogoutURLs` to the CloudFront domain (plus localhost only in the academic stage), and add the Cognito domain (`https://*.amazoncognito.com`) to the CSP `connect-src`
 
-**Checkpoint**: T046 pasa
+### Detección con pruebas gratuitas de 30 días (FR-031)
+
+- [ ] T072 [US6] In `infra/template.yaml`: add parameters `EnableGuardDuty` and `EnableSecurityHub` (type String, allowed `"true"`/`"false"`, default `"false"`) with conditions, and the resources `AWS::GuardDuty::Detector` (`Enable: true`) and the Security Hub hub, each created only when its condition is true; add the trial end date reminder to the parameter descriptions
+- [ ] T073 [US6] Infra test in `backend/test/infra/detection.test.ts`: both parameters default to `"false"`, resources exist only under their conditions, and no other resource depends on them
+- [ ] T074 [US6] Write `docs/free-plan-guide.md`: how to confirm the account plan type in Billing, how to enable/disable GuardDuty and Security Hub (`sam deploy --parameter-overrides EnableGuardDuty=true`), the 30-day trial end date, what is excluded and why (WAF, SMS MFA, Verified Permissions, Organizations), and the single-template rule
+
+**Checkpoint**: T046 y T073 pasan
 
 ---
 
@@ -225,7 +231,7 @@ Identificadores y comentarios en inglés, mensajes al usuario en español; funci
 
 ### Implementation for User Story 8
 
-- [ ] T057 [US8] In `infra/template.yaml`: add parameter `EnablePitr` (default `true`) and condition `IsProductionStage`; set `DeletionProtectionEnabled` and `PointInTimeRecoverySpecification` on `ProjectsTable`, `DonationsTable` and `AuditTable`
+- [ ] T057 [US8] In `infra/template.yaml`: add parameter `EnablePitr` (default `false`, set to `true` when deploying `production`) and condition `IsProductionStage`; set `DeletionProtectionEnabled` and `PointInTimeRecoverySpecification` on `ProjectsTable`, `DonationsTable` and `AuditTable`
 
 **Checkpoint**: T056 pasa
 

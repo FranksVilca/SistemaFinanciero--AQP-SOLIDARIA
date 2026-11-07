@@ -46,5 +46,5 @@ Sin cambios de esquema. Transiciones válidas de Donation:
 
 | Tabla | Protección contra borrado | PITR |
 |---|---|---|
-| Projects, Donations, Audit | solo `production` | parámetro `EnablePitr` |
+| Projects, Donations, Audit | solo `production` | parámetro `EnablePitr` (apagado por defecto; encendido en `production`) |
 | Idempotency | no (TTL de 24 h) | no |

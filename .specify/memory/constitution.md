@@ -27,7 +27,9 @@ Every request to protected resources must be explicitly authenticated and author
 - Mandatory Acceptance Test Cases T01 through T14 must be verifiable and produce documented evidence.
 
 ### V. AWS Free Plan Compliance & Resource Hygiene
-- The system must operate strictly within the AWS Free Plan boundaries. High-cost services (e.g., WAF on HTTP API, GuardDuty, Security Hub, SMS MFA) are explicitly excluded.
+- The system must operate within what the AWS Free Plan offers, including the free allowances and the 30-day trials of services that strengthen security. Trial services (e.g., GuardDuty, Security Hub) MAY be enabled, but MUST be controlled by template parameters, documented with their trial end date, and disabled or consciously accepted as a cost when the trial ends. Services with no free offering for this workload (e.g., WAF on an HTTP API, SMS MFA, Verified Permissions until its free allowance is confirmed) are excluded. SMS MFA is excluded because once enabled it cannot be removed as an MFA factor.
+- Joining AWS Organizations upgrades a Free Plan account to a paid plan, so multi-account designs are out of scope.
+- A single `infra/template.yaml` is the only deployment definition; differences between stages are limited to parameters and conditions on cost or teardown behavior, and are verified by tests for every stage.
 - Single AWS region deployment (`us-east-1` recommended).
 - CloudWatch log retention capped at 14 days.
 - Full Infrastructure as Code (IaC) via AWS SAM enabling reproducible deployment and complete resource cleanup via `sam delete`.
@@ -59,4 +61,4 @@ Code is read far more often than it is written, and AI-assisted code must be as 
 - Reviewers MUST verify Principle VII on every PR and MAY block a change that is hard to read or maintain, even when it works and its tests pass.
 - Code that predates Principle VII is brought into compliance incrementally: any file touched by a change MUST be left compliant with Principle VII in the parts the change modifies, and large non-compliant areas are tracked as tasks rather than ignored.
 
-**Version**: 2.1.0 | **Ratified**: 2026-11-02 | **Last Amended**: 2026-11-08
+**Version**: 2.2.0 | **Ratified**: 2026-11-02 | **Last Amended**: 2026-11-08

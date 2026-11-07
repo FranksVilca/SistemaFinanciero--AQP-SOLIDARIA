@@ -228,6 +228,9 @@ Los documentos, el uso de IA y los diagramas dicen solo lo que existe. El códig
 - **FR-024**: La integración continua MUST comprobar las reglas de calidad de código del principio VII: complejidad, tamaño de función, prohibición de tipos no justificados y formato.
 - **FR-025**: Las pruebas del proyecto MUST NOT reemplazar con simulaciones el comportamiento que verifican (por ejemplo, una expresión de base de datos).
 
+**Detección**
+- **FR-031**: El sistema MUST permitir activar, mediante parámetros del despliegue, los servicios de detección de amenazas con prueba gratuita de 30 días (detección de amenazas y centro de hallazgos de seguridad), apagados por defecto, y la documentación MUST indicar la fecha de fin de la prueba y cómo apagarlos para no generar costo.
+
 **Integridad de datos**
 - **FR-026**: Las tablas de donaciones, proyectos y auditoría MUST tener protección contra borrado y recuperación a un punto en el tiempo.
 
@@ -275,7 +278,10 @@ Los documentos, el uso de IA y los diagramas dicen solo lo que existe. El códig
 - El segundo factor de roles privilegiados es por aplicación autenticadora (TOTP); no se usa SMS por la constitución.
 - El dominio propio de producción se conoce o se parametriza por entorno; no hay un dominio único codificado.
 - Los rechazos 401 que emite la pasarela antes de llegar al backend no pueden escribirse en la tabla de auditoría; quedan en los registros de acceso de la pasarela. Los 401 y 403 que decide el backend sí se auditan.
-- La protección contra borrado de tablas se activa solo en la etapa de producción, para no impedir la limpieza completa de la etapa académica (constitución, principio V). La recuperación a un punto en el tiempo tiene un costo marginal fuera del plan gratuito (centavos con estos volúmenes) y se controla con un parámetro.
+- El objetivo es aprovechar lo que ofrece el plan gratuito de AWS, incluidas las pruebas de 30 días (constitución v2.2.0, principio V). Hay un único archivo de despliegue; las etapas solo difieren en parámetros y condiciones de costo o de borrado.
+- GuardDuty y Security Hub se ofrecen como parámetros apagados por defecto. Su disponibilidad depende del tipo de cuenta (plan gratuito o de pago); la documentación de AWS asocia las pruebas de corta duración al plan de pago, y esto se confirma en la consola de Billing antes de activarlos.
+- WAF (no se asocia a una HTTP API), SMS MFA, Verified Permissions y varias cuentas con Organizations quedan fuera: Organizations convierte la cuenta en plan de pago.
+- La protección contra borrado de tablas se activa solo en la etapa de producción, para no impedir la limpieza completa de la etapa académica (constitución, principio V). La recuperación a un punto en el tiempo no es gratuita (centavos con estos volúmenes) y se controla con un parámetro apagado por defecto.
 - La revalidación de sesión cuenta como mejora de prioridad baja y puede entregarse después de las de prioridad alta y media.
 - No se pudo probar contra AWS real el rechazo de tokens por API Gateway, la configuración real de Cognito ni la evidencia T10 completa; la validación de esas partes requiere un despliegue real y se registra como evidencia pendiente hasta entonces.
 - Dependencias: acceso a una cuenta de AWS para las pruebas finales, un emulador de base de datos en la integración continua y las constantes de la constitución v2.1.0.

@@ -38,7 +38,7 @@ Llevar la plataforma a la arquitectura objetivo (`docs/diagrams/zta-architecture
 | II. Seguridad académica / integridad financiera | Sin cambios de dominio; se corrige la transición de confirmación atómica | Pasa |
 | III. Mínimo privilegio | Roles por acción, sin borrado ni comodines, Audit solo `PutItem`; CI sin llaves (OIDC) | Pasa |
 | IV. Verificación negativa | Pasa de DB simulada a DynamoDB Local; la prueba T14 actual simula Cognito y se reemplaza por una aserción sobre el template | Pasa |
-| V. Free Plan e higiene | PITR no es gratuito (centavos): parametrizado. Protección de borrado solo en producción para conservar `sam delete`. CloudTrail: primer trail de eventos de gestión gratuito | Pasa con nota (ver Complexity Tracking) |
+| V. Free Plan e higiene (v2.2.0) | Un solo `template.yaml`. PITR no es gratuito: parámetro apagado por defecto. Protección de borrado solo en producción para conservar `sam delete`. CloudTrail: primer trail de eventos de gestión gratuito. GuardDuty y Security Hub (pruebas de 30 días): parámetros apagados por defecto, sujetos al tipo de cuenta | Pasa con nota (ver Complexity Tracking) |
 | VI. Transparencia y gobierno de IA | `AI_USAGE.md` se corrige (FR-030); logs sin PII (FR-015) | Pasa |
 | VII. Código mantenible | ESLint con complejidad ≤ 10, función ≤ 50 líneas, `no-explicit-any`; Prettier en CI; autorización/auditoría/errores centralizados en un solo módulo | Pasa |
 
@@ -98,6 +98,7 @@ frontend/                          # solo ajustes menores (CSP de Cognito se cor
 
 | Desviación | Por qué hace falta | Alternativa más simple rechazada porque |
 |---|---|---|
-| PITR fuera del plan gratuito | Requisito de recuperación (FR-026) y mejora 12 | No tenerlo deja datos y evidencia sin recuperación; se parametriza para apagarlo |
+| PITR fuera del plan gratuito | Requisito de recuperación (FR-026) y mejora 12 | No tenerlo deja datos y evidencia sin recuperación; parámetro `EnablePitr` apagado por defecto, encendido en `production` |
+| Pruebas de 30 días (GuardDuty, Security Hub) | Monitoreo de la postura (principio 5 de NIST, FR-031) con lo que ofrece AWS | No usarlas deja el principio 5 sin cubrir; van como parámetros apagados por defecto, con fecha de fin de prueba documentada, para no generar cobro por sorpresa |
 | MFA obligatorio para todo el pool, donantes incluidos | Cognito no exige MFA por grupo; la alternativa es un segundo pool de usuarios con su propio authorizer | Dos pools duplican identidad, clientes y rutas; el costo para el donante es una configuración única |
 | Llamada a Cognito en acciones sensibles | Cierra la ventana de token robado (H9) | Confiar solo en el JWT deja 15 min de exposición |
