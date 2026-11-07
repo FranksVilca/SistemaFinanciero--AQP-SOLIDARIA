@@ -38,10 +38,25 @@ Every request to protected resources must be explicitly authenticated and author
 - Observability: structured JSON logging with correlation IDs (`requestId`), with strict filtering to prevent leaking tokens, secrets, or sensitive donor PII.
 - AI governance: every code contribution assisted by AI agents or LLMs must be documented in `AI_USAGE.md` detailing tool, prompt context, human validation, and limitations.
 
+### VII. Maintainable, Readable & Idiomatic Code
+Code is read far more often than it is written, and AI-assisted code must be as easy to understand as hand-written code. Every contribution MUST follow these rules:
+- **Clear naming**: identifiers MUST reveal intent (`donorSub`, `isProjectPublished`), not abbreviations or generic names (`data`, `tmp`, `x`). Identifiers and comments are written in English; user-facing messages are written in Spanish.
+- **Small, single-purpose units**: a function MUST do one thing at one level of abstraction. CI MUST enforce limits on function length and cyclomatic complexity (initial thresholds: 50 lines and complexity 10); exceeding them requires a justification comment.
+- **No duplication of cross-cutting logic**: authorization, input validation, error-to-HTTP mapping, logging, and auditing MUST each be implemented once and reused, never copy-pasted per handler. Shared code lives in `backend/src/shared` or the module that owns it.
+- **No magic values**: literals with meaning (TTLs, limits, status names, currency, role names) MUST be named constants or typed enumerations defined in one place.
+- **Strict typing**: TypeScript strict mode MUST stay enabled. `any` and unchecked type assertions are forbidden unless justified by a comment explaining why a precise type is not possible. External input MUST be parsed with Zod schemas before use.
+- **Explicit error handling**: errors MUST be typed (`shared/errors.ts`), propagated or logged, and never swallowed silently. A `catch` that falls back to a different behavior, especially in security-related paths, MUST log the failure and fail closed.
+- **Comments explain why, not what**: code MUST be self-explanatory; comments are reserved for intent, trade-offs, and non-obvious constraints. Dead code, commented-out code, and unused exports MUST NOT be committed.
+- **Consistent formatting**: formatting and linting rules MUST be automated (Prettier + ESLint) and checked in CI. Style discussions in review are resolved by the tooling, not by opinion.
+- **Readable tests**: tests MUST describe observable behavior in their names, follow Arrange-Act-Assert, and test one behavior each. Mocks MUST NOT replace the behavior being verified (for example, a mocked database cannot prove a valid query expression).
+- **Simplicity first (YAGNI)**: no abstractions, options, or dependencies for hypothetical future needs. A new dependency MUST be justified in the PR description.
+
 ## Governance
 
 - This Constitution supersedes all informal practices and serves as the quality gate for planning, development, and PR approval.
 - Any architectural deviation or complexity must be documented and justified in the Implementation Plan's Complexity Tracking section.
 - Pre-merge checks in CI must pass with 0 errors.
+- Reviewers MUST verify Principle VII on every PR and MAY block a change that is hard to read or maintain, even when it works and its tests pass.
+- Code that predates Principle VII is brought into compliance incrementally: any file touched by a change MUST be left compliant with Principle VII in the parts the change modifies, and large non-compliant areas are tracked as tasks rather than ignored.
 
-**Version**: 2.0.0 | **Ratified**: 2026-11-02 | **Last Amended**: 2026-11-06
+**Version**: 2.1.0 | **Ratified**: 2026-11-02 | **Last Amended**: 2026-11-08
