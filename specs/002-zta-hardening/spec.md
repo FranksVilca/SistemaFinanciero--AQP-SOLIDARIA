@@ -70,7 +70,7 @@ Un auditor puede reconstruir quién intentó qué y con qué resultado, incluido
 
 **Acceptance Scenarios**:
 
-1. **Given** una solicitud denegada (401 o 403), **When** se procesa, **Then** se registra un evento con acción, resultado, actor pseudonimizado y `requestId`.
+1. **Given** una solicitud denegada por el backend (401 o 403) en una acción protegida, **When** se procesa, **Then** se registra un evento con acción, resultado, actor pseudonimizado y `requestId`.
 2. **Given** cualquier evento de auditoría, **When** se consulta, **Then** el identificador del usuario aparece siempre como seudónimo, nunca en crudo.
 3. **Given** una función cualquiera de la aplicación, **When** intenta editar o borrar un evento ya escrito, **Then** el permiso se lo impide.
 4. **Given** el auditor, **When** consulta eventos, **Then** ve éxitos y denegados; ningún otro rol puede consultarlos.
@@ -130,7 +130,7 @@ Cada cambio ejecuta pruebas de integración contra una base de datos emulada que
 
 ### User Story 8 - Los datos críticos se pueden recuperar y no se borran por accidente (Priority: P3)
 
-Las donaciones, proyectos y eventos de auditoría tienen protección contra borrado y se pueden recuperar a un punto anterior en el tiempo (mejora 12).
+Las donaciones, proyectos y eventos de auditoría tienen protección contra borrado en la etapa de producción y se pueden recuperar a un punto anterior en el tiempo cuando la recuperación está activada (mejora 12).
 
 **Why this priority**: Protege la integridad de los datos financieros simulados y de la evidencia, pero no bloquea el cumplimiento de los principios principales.
 
@@ -138,8 +138,9 @@ Las donaciones, proyectos y eventos de auditoría tienen protección contra borr
 
 **Acceptance Scenarios**:
 
-1. **Given** una tabla de datos críticos, **When** alguien intenta eliminarla, **Then** la operación es rechazada.
-2. **Given** una corrupción de datos, **When** se solicita recuperación, **Then** existe un punto en el tiempo al que restaurar.
+1. **Given** una tabla de datos críticos en la etapa de producción, **When** alguien intenta eliminarla, **Then** la operación es rechazada.
+2. **Given** una corrupción de datos y la recuperación activada, **When** se solicita recuperación, **Then** existe un punto en el tiempo al que restaurar.
+3. **Given** la etapa académica, **When** se ejecuta la limpieza, **Then** las tablas se eliminan sin pasos manuales adicionales.
 
 ---
 
@@ -206,7 +207,7 @@ Los documentos, el uso de IA y los diagramas dicen solo lo que existe. El códig
 - **FR-010**: El sistema MUST rechazar solicitudes sin identidad válida de forma uniforme como no autenticadas.
 
 **Auditoría**
-- **FR-011**: El sistema MUST registrar eventos de auditoría para éxitos y para denegaciones (401/403), con acción, resultado, actor pseudonimizado, instante y `requestId`.
+- **FR-011**: El sistema MUST registrar eventos de auditoría para toda denegación (401/403) que decida el backend en una acción protegida y para todo éxito de una acción que cambia estado, con acción, resultado, actor pseudonimizado, instante y `requestId`.
 - **FR-012**: El identificador del usuario MUST estar siempre pseudonimizado en la auditoría, y su escritura MUST centralizarse en un único punto.
 - **FR-013**: Ningún componente de la aplicación MUST poder editar ni borrar eventos de auditoría ya escritos; solo agregar nuevos.
 - **FR-014**: Solo el rol auditor MUST poder consultar los eventos de auditoría.
@@ -214,7 +215,7 @@ Los documentos, el uso de IA y los diagramas dicen solo lo que existe. El códig
 
 **Privilegio mínimo**
 - **FR-016**: Cada función MUST tener su propio rol con solo las acciones y tablas necesarias, sin comodines ni borrado salvo justificación documentada.
-- **FR-017**: Debe existir evidencia automatizada de acceso denegado por permiso insuficiente (T10).
+- **FR-017**: Debe existir una comprobación automatizada de que los permisos de cada función no exceden lo permitido, y evidencia manual, en AWS real, de un acceso denegado por permiso insuficiente (T10).
 
 **Telemetría y red**
 - **FR-018**: Los registros de todas las funciones MUST tener retención de 14 días definida en la infraestructura como código.
@@ -232,7 +233,7 @@ Los documentos, el uso de IA y los diagramas dicen solo lo que existe. El códig
 - **FR-031**: El sistema MUST permitir activar, mediante parámetros del despliegue, los servicios de detección de amenazas con prueba gratuita de 30 días (detección de amenazas y centro de hallazgos de seguridad), apagados por defecto, y la documentación MUST indicar la fecha de fin de la prueba y cómo apagarlos para no generar costo.
 
 **Integridad de datos**
-- **FR-026**: Las tablas de donaciones, proyectos y auditoría MUST tener protección contra borrado y recuperación a un punto en el tiempo.
+- **FR-026**: En la etapa de producción, las tablas de donaciones, proyectos y auditoría MUST tener protección contra borrado. La recuperación a un punto en el tiempo MUST poder activarse mediante un parámetro (apagado por defecto por su costo) y MUST estar activa al desplegar producción.
 
 **Sesión**
 - **FR-027**: Las acciones sensibles MUST revalidar que la sesión no esté revocada y MUST fallar cerrado si no se puede comprobar.
@@ -263,8 +264,8 @@ Los documentos, el uso de IA y los diagramas dicen solo lo que existe. El códig
 - **SC-006**: 0 funciones con permisos de borrado o comodines no justificados.
 - **SC-007**: Un despliegue desde cero deja registros con retención de 14 días, registro de cambios, límites por ruta y origen restringido, sin pasos manuales.
 - **SC-008**: Un cambio que reintroduce un fallo conocido (expresión inválida, permiso excesivo, ruta sin autorización) hace fallar la integración continua en el 100 % de los casos.
-- **SC-009**: En acciones sensibles, una sesión revocada es rechazada en menos de 1 minuto desde la revocación.
-- **SC-010**: Los 7 principios de NIST SP 800-207 tienen su estado actualizado con evidencia; los principios 3, 6 y 7 pasan de parcial a cumple, y el 5 queda como parcial declarado.
+- **SC-009**: En acciones sensibles, una sesión revocada es rechazada en menos de 1 minuto desde la revocación. Se verifica con un servicio simulado; la comprobación con el servicio de identidad real queda como evidencia pendiente hasta desplegar.
+- **SC-010**: Los 7 principios de NIST SP 800-207 tienen su estado actualizado con evidencia; los principios 6 y 7 pasan de parcial a cumple, el 3 pasa a cumple solo si la revalidación de sesión (historia 9) está entregada y, si no, permanece parcial, y el 5 queda como parcial declarado.
 - **SC-011**: 0 afirmaciones de seguridad en los documentos sin evidencia respaldatoria.
 - **SC-012**: El conjunto completo de pruebas y análisis se ejecuta en menos de 10 minutos en la integración continua.
 

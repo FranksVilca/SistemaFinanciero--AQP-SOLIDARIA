@@ -83,7 +83,7 @@ Identificadores y comentarios en inglés, mensajes al usuario en español; funci
 
 ### Tests for User Story 2
 
-- [ ] T014 [US2] Replace `backend/test/mfa.test.ts` (it simulates Cognito inside the test) with `backend/test/infra/mfa.test.ts` asserting on the real template: `MfaConfiguration` is `REQUIRED`, `EnabledMfas` is exactly `SOFTWARE_TOKEN_MFA`, no SMS configuration, a `AWS::Cognito::UserPoolDomain` exists using `CognitoDomainPrefix`, `AccessTokenValidity` ≤ 15 minutes, ID token not accepted as API credential (authorizer audience is the SPA client and routes list `AuthorizationScopes`)
+- [ ] T014 [US2] Replace `backend/test/mfa.test.ts` (it simulates Cognito inside the test) with `backend/test/infra/mfa.test.ts` asserting on the real template: `MfaConfiguration` is `REQUIRED`, `EnabledMfas` is exactly `SOFTWARE_TOKEN_MFA`, no SMS configuration, a `AWS::Cognito::UserPoolDomain` exists using `CognitoDomainPrefix`, `AccessTokenValidity` ≤ 15 minutes, ID token not accepted as API credential (authorizer audience is the SPA client and routes list `AuthorizationScopes`); the runtime rejection of an ID token and of a forged token is verified only in T070 (accepted gap, constitution IV)
 
 ### Implementation for User Story 2
 
@@ -102,7 +102,7 @@ Identificadores y comentarios en inglés, mensajes al usuario en español; funci
 ### Tests for User Story 3
 
 - [ ] T016 [P] [US3] Unit tests for `withAuth` in `backend/test/withAuth.test.ts` following `contracts/with-auth.md`: fixed execution order, 401 without identity, 403 on insufficient role, 404 when `loadResource` finds nothing, any exception from the policy engine denies (fail closed), errors mapped to HTTP without stack trace
-- [ ] T017 [P] [US3] Route coverage test in `backend/test/infra/withAuthCoverage.test.ts`: for every `Handler:` in `infra/template.yaml`, import the compiled-source module and assert `handler[WITH_AUTH] === true`; include a negative case that a module without the marker fails the check
+- [ ] T017 [P] [US3] Route coverage test in `backend/test/infra/withAuthCoverage.test.ts`: for every `Handler:` in `infra/template.yaml`, resolve it to its source file (`Handler: projects/x.handler` maps to `backend/src/projects/x.ts`), import the module and assert `handler[WITH_AUTH] === true`; include a negative case that a module without the marker fails the check
 - [ ] T018 [P] [US3] Integration role × action matrix in `backend/test/integration/authzMatrix.test.ts`: every disallowed combination (donor creating/publishing project, manager donating, non-auditor viewing audit, fake group `GESTOR_FAKE`, no identity) returns 401/403 and leaves the tables unchanged
 - [ ] T019 [P] [US3] Integration BOLA tests in `backend/test/integration/bola.test.ts`: another donor or a manager cannot confirm someone else's donation, the donor history only contains their own donations, and the donation status is unchanged after each attack (replaces the mocked `backend/test/bola.test.ts`)
 
@@ -191,7 +191,7 @@ Identificadores y comentarios en inglés, mensajes al usuario en español; funci
 
 ### Detección con pruebas gratuitas de 30 días (FR-031)
 
-- [ ] T072 [US6] In `infra/template.yaml`: add parameters `EnableGuardDuty` and `EnableSecurityHub` (type String, allowed `"true"`/`"false"`, default `"false"`) with conditions, and the resources `AWS::GuardDuty::Detector` (`Enable: true`) and the Security Hub hub, each created only when its condition is true; add the trial end date reminder to the parameter descriptions
+- [ ] T072 [US6] In `infra/template.yaml`: add parameters `EnableGuardDuty` and `EnableSecurityHub` (type String, allowed `"true"`/`"false"`, default `"false"`) with conditions, and the resources `AWS::GuardDuty::Detector` (`Enable: true`) and the Security Hub hub (`AWS::SecurityHub::Hub`; check the resource type and properties against the CloudFormation reference with `cfn-lint`, and confirm in the account's console that a Security Hub trial applies before enabling it), each created only when its condition is true; add the trial end date reminder to the parameter descriptions
 - [ ] T073 [US6] Infra test in `backend/test/infra/detection.test.ts`: both parameters default to `"false"`, resources exist only under their conditions, and no other resource depends on them; run with `describe.each(STAGES)`
 - [ ] T074 [US6] Write `docs/free-plan-guide.md`: how to confirm the account plan type in Billing, how to enable/disable GuardDuty and Security Hub (`sam deploy --parameter-overrides EnableGuardDuty=true`), the 30-day trial end date, what is excluded and why (WAF, SMS MFA, Verified Permissions, Organizations), and the single-template rule, plus the cleanup procedure of T078
 - [ ] T078 [US6] Create `scripts/cleanup.ps1`: empty the CloudTrail log bucket and the frontend bucket (including object versions), then run `sam delete`; refuse to run against a stage named `production` unless `-Force` is passed. A non-empty bucket otherwise blocks `sam delete` (constitution V)
@@ -271,6 +271,7 @@ Identificadores y comentarios en inglés, mensajes al usuario en español; funci
 - [ ] T064 [P] [US10] Rewrite the affected statements in `AI_USAGE.md`: no Cedar adapter as active, and list every AI tool actually used in this repository (ask the maintainer to confirm the list)
 - [ ] T065 [P] [US10] Update `docs/zta-hallazgos-y-mejoras.md`: status of H1–H11, the seven NIST principles, section 8 inconsistencies and section 11 evidence, marking what remains pending real AWS
 - [ ] T066 [P] [US10] Update `docs/arquitectura-comparacion.md` and `docs/threat-model.md` so the "mejorada" column and the mitigations match what is implemented; update the claims on MFA, audit immutability and policy engine in `design.md` and `requirements.md`
+- [ ] T079 [P] [US10] Write `docs/operations-notes.md` covering the edge cases of the spec: (a) after a point-in-time restore the `confirmedAmountCents` of a project can differ from its confirmed donations, with the steps to recompute it; (b) audit pseudonyms remain after a user is deleted and cannot be traced back to the user directly; (c) privileged users enroll their TOTP at first sign-in through the Hosted UI before receiving any token
 - [ ] T067 [US10] Final consistency sweep: search the repository for `verified_permissions`, `cedarAdapter`, `logAuditEvent`, `DynamoDBCrudPolicy`, `enforceAuthz` outside `withAuth`, and `MfaConfiguration: "OPTIONAL"`; fix or justify each hit
 
 ---
@@ -366,3 +367,4 @@ Tras Foundational: A → US1 + US2; B → US3 (luego US4 y US9); C → US7 (T051
 - Evidencia que exige AWS real (T045, T070) queda **pendiente** hasta ejecutarse; no se marca como cumplida por pruebas locales.
 - El usuario realiza los commits; las tareas no incluyen commits.
 - Evitar: tareas vagas, conflictos en `infra/template.yaml`, dependencias cruzadas que rompan la independencia de historias.
+- T072–T079 se añadieron después del análisis de consistencia; se ejecutan en el orden de la fase donde están, no por número.
