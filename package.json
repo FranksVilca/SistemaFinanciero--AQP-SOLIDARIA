@@ -17,7 +17,8 @@
     "format:check": "prettier --check .",
     "test:integration": "npm run test:integration --workspace=backend",
     "test:infra": "npm run test:infra --workspace=backend",
-    "test:floci": "npm run test:floci --workspace=backend"
+    "test:floci": "npm run test:floci --workspace=backend",
+    "test:floci:e2e": "npm run test:floci:e2e --workspace=backend"
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",

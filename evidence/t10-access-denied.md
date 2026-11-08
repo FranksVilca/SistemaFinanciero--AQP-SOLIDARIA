@@ -14,7 +14,7 @@ docker compose -f backend/test/floci/docker-compose.yml up -d   # Floci 2.4.0 co
 npm run test:floci
 ```
 
-Resultado del 2026-11-08: **44 de 44 pruebas pasan** en esta suite (72 con las de Cognito, API Gateway y despliegue).
+Resultado del 2026-11-08: **44 de 44 pruebas pasan** en esta suite (78 con las de Cognito, API Gateway, revocación y despliegue).
 
 ### Por qué el emulador prueba algo y no es un simulacro
 

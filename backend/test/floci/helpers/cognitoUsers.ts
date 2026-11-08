@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import {
   AdminAddUserToGroupCommand,
   AdminCreateUserCommand,
@@ -91,4 +92,84 @@ export async function obtainTokens(pool: PoolRef, username: string): Promise<Aut
   const first = await login(pool, username);
   if (first.AuthenticationResult) return first.AuthenticationResult;
   return (await enrollAuthenticator(pool, username)).tokens;
+}
+
+export interface HostedTokens {
+  accessToken: string;
+  idToken: string;
+  refreshToken: string;
+}
+
+const FORM_HEADERS = { "Content-Type": "application/x-www-form-urlencoded" };
+
+function cookiesOf(response: Response): string[] {
+  return (response.headers.getSetCookie?.() ?? []).map((cookie) => cookie.split(";")[0]);
+}
+
+/**
+ * Signs a user in through the hosted login the way the SPA does: authorization code with PKCE, a login form with its
+ * CSRF token, then the code exchange. Unlike the admin sign-in API, the access token carries the OAuth scopes that were
+ * requested (for example api/donations.write), which is what the scopes of the API routes check.
+ */
+export async function hostedSignIn(
+  pool: PoolRef,
+  username: string,
+  scopes: string[],
+  redirectUri: string
+): Promise<HostedTokens> {
+  const oauth = `${FLOCI_ENV.FLOCI_ENDPOINT}/cognito-idp`;
+  const verifier = randomBytes(32).toString("base64url");
+  const authorize = new URLSearchParams({
+    client_id: pool.clientId,
+    response_type: "code",
+    scope: scopes.join(" "),
+    redirect_uri: redirectUri,
+    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+    code_challenge_method: "S256",
+    state: randomBytes(8).toString("hex"),
+  });
+
+  const started = await fetch(`${oauth}/oauth2/authorize?${authorize}`, { redirect: "manual" });
+  const location = started.headers.get("location");
+  if (!location) {
+    const detail = (await started.text()).replace(/s+/g, " ").slice(0, 300);
+    throw new Error(`The authorization request of ${username} was refused (HTTP ${started.status}): ${detail}`);
+  }
+  const loginUrl = new URL(location, FLOCI_ENV.FLOCI_ENDPOINT);
+  const cookies = cookiesOf(started);
+  const page = await fetch(loginUrl, { headers: { cookie: cookies.join("; ") } });
+  const hiddenFields = Object.fromEntries(
+    [...(await page.text()).matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)"/g)].map((match) => [
+      match[1],
+      match[2],
+    ])
+  );
+
+  const submitted = await fetch(`${oauth}/login`, {
+    method: "POST",
+    headers: { ...FORM_HEADERS, cookie: [...cookies, ...cookiesOf(page)].join("; ") },
+    body: new URLSearchParams({ ...hiddenFields, username, password: PASSWORD }),
+    redirect: "manual",
+  });
+  const code = new URL(submitted.headers.get("location") ?? "", redirectUri).searchParams.get("code");
+  if (!code) {
+    const detail = (await submitted.text()).replace(/s+/g, " ").slice(0, 300);
+    throw new Error(
+      `Hosted sign-in of ${username} returned no authorization code (HTTP ${submitted.status}): ${detail}`
+    );
+  }
+
+  const exchanged = await fetch(`${oauth}/oauth2/token`, {
+    method: "POST",
+    headers: FORM_HEADERS,
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: pool.clientId,
+      code,
+      redirect_uri: redirectUri,
+      code_verifier: verifier,
+    }),
+  });
+  const body = (await exchanged.json()) as Record<string, string>;
+  return { accessToken: body.access_token, idToken: body.id_token, refreshToken: body.refresh_token };
 }

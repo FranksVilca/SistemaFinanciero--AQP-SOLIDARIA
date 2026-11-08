@@ -11,5 +11,8 @@ services:
       FLOCI_BASE_URL: https://localhost:4566
       # Lets the authorizer read the keys from an issuer on localhost.
       FLOCI_SECURITY_ALLOW_PRIVATE_JWT_TARGETS: "true"
+      # Cognito does not accept access tokens that live less than 5 minutes; a test that needs an expired token
+      # shortens the lifetime to a few seconds, which the emulator only allows with this setting off.
+      FLOCI_SERVICES_COGNITO_ENFORCE_TOKEN_VALIDITY_LIMITS: "false"
     ports:
       - "4566:4566"

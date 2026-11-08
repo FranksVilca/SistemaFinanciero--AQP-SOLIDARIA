@@ -5,7 +5,7 @@ import type { StackResourceSummary } from "@aws-sdk/client-cloudformation";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FLOCI_ENV } from "./flociEnv.js";
 import { cognito } from "./helpers/cognitoUsers.js";
-import { countOf, deleteStack, deployStack, physicalIdOf } from "./helpers/stack.js";
+import { countOf, deleteStack, deployStack, physicalIdOf, productionEquivalentTemplate } from "./helpers/stack.js";
 
 /**
  * Deploys infra/template.yaml, SAM transform included, into Floci and checks the result. It proves the
@@ -72,10 +72,6 @@ describe("academic stage", () => {
   });
 });
 
-// The production stage cannot be deployed into Floci: its static reference check rejects the Fn::If branches
-// that the SAM translator generates around the conditional simulation function ('Unresolved resource
-// dependencies [SimulateDonationFunction]'). Real CloudFormation accepts them. The production stage is verified
-// by test/infra for every property that differs from the academic stage.
 describe("academic stage with the optional detection services", () => {
   const stackName = "zta-detection";
   let resources: StackResourceSummary[];
@@ -98,5 +94,43 @@ describe("academic stage with the optional detection services", () => {
 
   it("skips the trail when the account already has one", () => {
     expect(countOf(resources, "AWS::CloudTrail::Trail")).toBe(0);
+  });
+});
+
+// Floci cannot deploy the production stage from the full template (see productionEquivalentTemplate), so the template
+// without the simulation function is deployed instead, which is what the production stage amounts to. Floci's
+// CloudFormation does not apply DeletionProtectionEnabled or PointInTimeRecoverySpecification to the tables it creates
+// (it does implement deletion protection through the DynamoDB API), so those two properties are asserted in
+// test/infra/dataProtection.test.ts.
+describe("production stage (template without the simulation function)", () => {
+  const stackName = "zta-production";
+  let resources: StackResourceSummary[];
+
+  beforeAll(async () => {
+    resources = await deployStack(
+      stackName,
+      { StageName: "production", CognitoDomainPrefix: "zta-production-auth" },
+      productionEquivalentTemplate()
+    );
+  });
+  afterAll(() => deleteStack(stackName));
+
+  it("has eight functions and eight routes: the simulation endpoint does not exist", () => {
+    expect(countOf(resources, "AWS::Lambda::Function")).toBe(FUNCTIONS_IN_ACADEMIC - 1);
+    expect(countOf(resources, "AWS::ApiGatewayV2::Route")).toBe(FUNCTIONS_IN_ACADEMIC - 1);
+  });
+
+  it("keeps the mandatory second factor, the log retention and the audit key of the other stage", async () => {
+    const { UserPool } = await cognito.send(
+      new DescribeUserPoolCommand({ UserPoolId: physicalIdOf(resources, "AWS::Cognito::UserPool") })
+    );
+    const { logGroups = [] } = await logs.send(
+      new DescribeLogGroupsCommand({ logGroupNamePrefix: "/aqp-solidaria/production" })
+    );
+    const { Table } = await dynamo.send(new DescribeTableCommand({ TableName: "aqp-audit-production" }));
+
+    expect(UserPool?.MfaConfiguration).toBe("ON");
+    expect(logGroups.every((group) => group.retentionInDays === LOG_RETENTION_DAYS)).toBe(true);
+    expect(Table?.KeySchema?.map((key) => key.AttributeName)).toEqual(["auditDay", "timestamp#eventId"]);
   });
 });

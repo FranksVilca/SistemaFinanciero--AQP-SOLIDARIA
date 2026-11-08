@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { STAGES, loadTemplate, propertiesOf, resourcesOfType, type JsonObject } from "./helpers/loadTemplate.js";
+import {
+  STAGES,
+  loadTemplate,
+  propertiesOf,
+  rawParameters,
+  resourcesOfType,
+  type JsonObject,
+} from "./helpers/loadTemplate.js";
 
 const HSTS_MINIMUM_SECONDS = 15_552_000; // 180 days
 const textOf = (value: unknown): string => JSON.stringify(value);
@@ -14,6 +21,17 @@ interface PolicyStatement {
 
 const statementsOf = (policy: JsonObject): PolicyStatement[] =>
   (propertiesOf(policy).PolicyDocument as JsonObject).Statement as unknown as PolicyStatement[];
+
+/** CSP host-source matching for the https sources used here: an exact origin or a wildcard subdomain. */
+function allowedByHostSources(sources: string[], url: string): boolean {
+  const { host, protocol } = new URL(url);
+  return sources.some((source) => {
+    if (source === "'self'") return false;
+    const match = /^(\w+):\/\/(\*\.)?([^/]+)$/.exec(source);
+    if (!match || `${match[1]}:` !== protocol) return false;
+    return match[2] ? host.endsWith(`.${match[3]}`) : host === match[3];
+  });
+}
 
 describe.each(STAGES)("communication security in stage %s (NIST principle 2)", (stage) => {
   const template = loadTemplate(stage);
@@ -44,6 +62,26 @@ describe.each(STAGES)("communication security in stage %s (NIST principle 2)", (
     expect(csp).toContain("object-src 'none'");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).not.toMatch(/unsafe-eval|script-src[^;]*unsafe-inline|\*\s*;/);
+  });
+
+  it("lets the SPA reach everything it needs: discovery, token, revocation and the API (connect-src)", () => {
+    const policyValue = (securityHeaders.ContentSecurityPolicy as JsonObject).ContentSecurityPolicy;
+    const rawPolicy = typeof policyValue === "string" ? policyValue : String((policyValue as JsonObject)["Fn::Sub"]);
+    const parameters = rawParameters();
+    const policy = rawPolicy
+      .replace(/\$\{CognitoDomainPrefix\}/g, String(parameters.CognitoDomainPrefix.Default))
+      .replace(/\$\{AWS::Region\}/g, "us-east-1");
+    const connectSources = /connect-src ([^;]+);/.exec(policy)![1].split(/\s+/);
+
+    // Hosts the SPA calls (frontend/src/auth/authService.ts and frontend/src/services/apiClient.ts).
+    const requests = [
+      "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example/.well-known/openid-configuration",
+      `https://${parameters.CognitoDomainPrefix.Default}.auth.us-east-1.amazoncognito.com/oauth2/token`,
+      `https://${parameters.CognitoDomainPrefix.Default}.auth.us-east-1.amazoncognito.com/oauth2/revoke`,
+      "https://abc123def4.execute-api.us-east-1.amazonaws.com/academic/v1/projects",
+    ];
+    for (const request of requests) expect(allowedByHostSources(connectSources, request), request).toBe(true);
+    expect(allowedByHostSources(connectSources, "https://evil.example.com/collect")).toBe(false);
   });
 
   it("keeps the frontend bucket private and readable only by this CloudFront distribution", () => {

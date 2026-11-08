@@ -1,0 +1,19 @@
+# Floci with the Docker socket mounted, so it can run the Lambda functions in real containers.
+# SECURITY: mounting the Docker socket gives the container control of the Docker host. Use it only on a
+# machine you control (or on an ephemeral CI runner) and never on a shared one.
+services:
+  floci:
+    image: floci/floci:2.4.0
+    user: root
+    environment:
+      FLOCI_SERVICES_IAM_ENFORCEMENT_ENABLED: "true"
+      FLOCI_TLS_ENABLED: "true"
+      FLOCI_BASE_URL: https://localhost:4566
+      FLOCI_SECURITY_ALLOW_PRIVATE_JWT_TARGETS: "true"
+      # Cognito does not accept access tokens that live less than 5 minutes; a test that needs an expired token
+      # shortens the lifetime to a few seconds, which the emulator only allows with this setting off.
+      FLOCI_SERVICES_COGNITO_ENFORCE_TOKEN_VALIDITY_LIMITS: "false"
+    ports:
+      - "4566:4566"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

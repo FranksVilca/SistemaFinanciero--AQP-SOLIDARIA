@@ -37,13 +37,25 @@ npm run test:floci
 
 Sin la opción de IAM Floci acepta cualquier operación y las pruebas no demostrarían nada. El TLS propio de Floci hace falta porque su autorizador JWT exige un emisor `https://`. El `docker-compose.yml` activa ambas cosas y las explica.
 
-Esperado (72 pruebas):
+Esperado (78 pruebas, sin socket de Docker):
 - **IAM (T10):** cada handler funciona con la política exacta de su rol en `infra/template.yaml` y todo lo demás recibe `AccessDeniedException`.
 - **Cognito (T11, T14):** un usuario sin segundo factor no recibe tokens (`MFA_SETUP`); un ID token da 401 en las rutas protegidas.
 - **API Gateway (T02, T11):** desplegado el template, el autorizador JWT rechaza sin token, con token falso, con el payload alterado y con un token de otro pool (401), y rechaza el ID token y los tokens sin el scope de la ruta (403); acepta un token de acceso genuino.
-- **Despliegue:** `infra/template.yaml` despliega como stack (SAM incluido) en la etapa académica, con y sin las opciones de detección.
+- **Revocación:** revocar el refresh token en el endpoint que el SPA deriva del descubrimiento deja inservibles el refresh y el access token.
+- **Despliegue:** `infra/template.yaml` despliega como stack (SAM incluido) en la etapa académica, con y sin las opciones de detección, y en la etapa `production` (sin la función de simulación).
 
-Límites del emulador: no ejecuta las Lambdas (exigiría montar el socket de Docker dentro de su contenedor), no concede los scopes `api/*` en el inicio de sesión por API, no permite probar un token vencido y no puede desplegar la etapa `production` (ver `evidence/test-run-report.md`, sección 3).
+### Extremo a extremo con las Lambdas reales
+
+```bash
+docker compose -f backend/test/floci/docker-compose.lambda.yml up -d   # monta el socket de Docker
+npm run test:floci:e2e
+```
+
+Esperado (11 pruebas): el template desplegado en Floci, el código real de las 9 funciones corriendo en contenedores con su rol IAM (la política en línea del template), usuarios que inician sesión por el login alojado con los scopes del SPA, y el flujo completo: 401 y 403 en el gateway, crear y publicar un proyecto, donar con idempotencia, confirmar, historial, auditoría pseudonimizada y revocación de sesión.
+
+**Seguridad:** montar el socket de Docker da al contenedor control del host Docker. Hazlo solo en una máquina tuya o en un runner efímero de CI.
+
+Límites del emulador: no activa el TOTP en los pools creados por CloudFormation, no aplica la protección de borrado ni PITR a las tablas del stack y su interfaz de inicio de sesión no es la de Cognito (ver `evidence/test-run-report.md`, sección 3).
 
 ## 3. Verificaciones del template
 

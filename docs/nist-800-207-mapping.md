@@ -15,8 +15,9 @@ Cada principio de NIST SP 800-207 con el control que lo implementa, la evidencia
 | Unitaria | Lógica sin base de datos | `npm run test` |
 | Integración | Handlers contra DynamoDB Local | `npm run test:integration` |
 | Infraestructura | Aserciones sobre `infra/template.yaml`, etapas `academic` y `production` | `npm run test:infra` |
-| Emulador (Floci, con IAM y TLS activos) | Políticas IAM reales del template, Cognito con MFA, autorizador JWT de API Gateway y despliegue del stack | `npm run test:floci` |
-| AWS real | Lo que el emulador no puede mostrar: ejecución de las Lambdas, token con scopes correctos y token vencido, Hosted UI, revocación real, etapa `production` | pendiente: [quickstart.md](../specs/002-zta-hardening/quickstart.md), sección 4 |
+| Emulador (Floci, con IAM y TLS activos) | Políticas IAM reales del template, Cognito con MFA, autorizador JWT de API Gateway, revocación del refresh token y despliegue del stack | `npm run test:floci` |
+| Extremo a extremo (Floci con el socket de Docker) | Gateway con scopes, Lambdas reales con su rol IAM, DynamoDB, auditoría y revocación de sesión, todo desplegado desde el template | `npm run test:floci:e2e` |
+| AWS real | Lo que el emulador no puede mostrar: la interfaz real de Cognito en un navegador, los efectos de la protección de borrado y de PITR en `production`, y una pasada de confirmación de que el emulador se comporta como AWS | pendiente: [quickstart.md](../specs/002-zta-hardening/quickstart.md), sección 4 |
 
 ## Componentes de la arquitectura
 
@@ -45,7 +46,7 @@ Cada principio de NIST SP 800-207 con el control que lo implementa, la evidencia
 
 | Evidencia | Qué comprueba |
 |---|---|
-| `backend/test/infra/networkSecurity.test.ts` | `redirect-to-https`, HSTS ≥ 180 días, CSP sin orígenes comodín, bucket privado con política OAC y rechazo de tráfico sin TLS |
+| `backend/test/infra/networkSecurity.test.ts` | `redirect-to-https`, HSTS ≥ 180 días, CSP sin orígenes comodín que además deja pasar todo lo que pide el SPA (descubrimiento, token, revocación, API), bucket privado con política OAC y rechazo de tráfico sin TLS |
 | `backend/test/infra/telemetryAndEdge.test.ts` | CORS limitado al dominio propio (localhost solo en la etapa académica) |
 | `backend/test/floci/stackDeployment.test.ts` | El stack con la política del bucket despliega |
 
@@ -60,10 +61,12 @@ Cada principio de NIST SP 800-207 con el control que lo implementa, la evidencia
 | `backend/test/integration/bola.test.ts` | Otro donante o un gestor no pueden actuar sobre una donación ajena; el estado no cambia |
 | `backend/test/integration/sessionCheck.test.ts` | Una sesión revocada, un servicio inaccesible o una respuesta tardía dan 401 en publicar, auditar y confirmar |
 | `backend/test/integration/idToken.test.ts`, `backend/test/floci/cognito.test.ts` | Un ID token (también uno emitido por el Cognito emulado) da 401 en todas las rutas protegidas |
-| `backend/test/floci/apiAuthorizer.test.ts` | El autorizador de API Gateway emulado rechaza el token alterado, el de otro pool y el que no trae el scope de la ruta (el ID token recibe 403) |
+| `backend/test/floci/apiAuthorizer.test.ts` | El autorizador de API Gateway emulado rechaza el token alterado, el de otro pool y el vencido (401) y el que no trae el scope de la ruta (el ID token recibe 403); acepta uno con los scopes del SPA |
+| `backend/test/floci/refreshRevocation.test.ts` | Revocar el refresh token en el endpoint que el SPA deriva del descubrimiento deja inservibles el refresh y el access token |
+| `backend/test/floci/e2e/fullStack.test.ts` | De extremo a extremo con las Lambdas reales: una sesión revocada recibe 401 en una acción sensible con su token todavía vigente |
 | `backend/test/infra/mfa.test.ts` | Tokens de acceso e identidad de 15 minutos como máximo |
 
-**Estado: Cumple (real pendiente)** — falta la revocación contra el `userInfo` de Cognito real, un token vencido y un token con los scopes correctos aceptado por el gateway (`evidence/test-run-report.md`, sección 3).
+**Estado: Cumple (real pendiente)** — todo lo anterior está demostrado en el emulador; solo falta la pasada de confirmación en AWS real (`evidence/test-run-report.md`, sección 3).
 
 ## Principio 4 — El acceso lo decide una política dinámica
 
@@ -97,11 +100,12 @@ Cada principio de NIST SP 800-207 con el control que lo implementa, la evidencia
 | Evidencia | Qué comprueba |
 |---|---|
 | `backend/test/floci/cognito.test.ts` | Contra un Cognito emulado construido con la configuración del template: sin segundo factor no hay tokens (`MFA_SETUP`), con él sí, y solo TOTP |
-| `backend/test/floci/apiAuthorizer.test.ts` | Desplegado el template: las 6 rutas protegidas devuelven 401 sin token, con un token falso, con el payload alterado y con un token de otro pool; las 3 públicas no piden token |
+| `backend/test/floci/apiAuthorizer.test.ts` | Desplegado el template: las 6 rutas protegidas devuelven 401 sin token, con un token falso, con el payload alterado, con un token de otro pool y con uno vencido; las 3 públicas no piden token |
+| `backend/test/floci/e2e/fullStack.test.ts` | El flujo completo con las Lambdas reales: 403 por rol y por propietario, 400 y 409 por validación e idempotencia, y 401 con un ID token que el gateway dejó pasar |
 | `backend/test/infra/mfa.test.ts` | `MfaConfiguration: ON`, solo TOTP, sin SMS, scopes en toda ruta protegida |
 | `backend/test/withAuth.test.ts` | 401 sin identidad, 403 sin rol, 404 solo tras pasar el rol, sin filtrar detalles internos |
 
-**Estado: Cumple (real pendiente)** — el emulador no ejecuta las Lambdas ni el Hosted UI, y no hay forma de probar un token vencido; el rechazo de tokens falsos, alterados y de otro pool por el autorizador sí está demostrado.
+**Estado: Cumple (real pendiente)** — el rechazo de tokens falsos, alterados, de otro pool, vencidos y sin scope, y el flujo con las Lambdas reales, están demostrados en el emulador; falta el Hosted UI real en un navegador y la pasada de confirmación en AWS.
 
 ## Principio 7 — Recolectar información para mejorar la postura
 

@@ -72,9 +72,14 @@ npm run test:integration
 # Pruebas sobre infra/template.yaml, en las etapas academic y production
 npm run test:infra
 
-# Emulador de AWS (Floci) con IAM activo: políticas IAM reales del template, Cognito con MFA y despliegue del stack
+# Emulador de AWS (Floci) con IAM y TLS activos: políticas IAM reales del template, Cognito con MFA,
+# autorizador JWT de API Gateway, revocación y despliegue del stack
 docker compose -f backend/test/floci/docker-compose.yml up -d
 npm run test:floci
+
+# Extremo a extremo con las Lambdas reales en contenedores (monta el socket de Docker: solo en una máquina tuya)
+docker compose -f backend/test/floci/docker-compose.lambda.yml up -d
+npm run test:floci:e2e
 ```
 
 El mapeo de cada principio de NIST SP 800-207 a su evidencia está en [docs/nist-800-207-mapping.md](docs/nist-800-207-mapping.md).

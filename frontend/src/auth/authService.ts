@@ -1,4 +1,5 @@
 import { UserManager, WebStorageStateStore, InMemoryWebStorage, User } from "oidc-client-ts";
+import { revocationEndpointOf } from "./revocation.js";
 
 const authority =
   import.meta.env.VITE_COGNITO_AUTHORITY ||
@@ -29,21 +30,25 @@ export async function handleOidcCallback(): Promise<User | null> {
   return user ?? null;
 }
 
+/** Revokes the refresh token (and with it the access and ID tokens minted from it) before the local session is dropped. */
+async function revokeRefreshToken(refreshToken: string): Promise<void> {
+  const metadata = await userManager.metadataService.getMetadata();
+  const response = await fetch(revocationEndpointOf(String(metadata.token_endpoint)), {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ token: refreshToken, client_id: clientId }),
+  });
+  if (!response.ok) throw new Error(`Token revocation was refused (HTTP ${response.status})`);
+}
+
 export async function logoutWithOidc(): Promise<void> {
   const user = await userManager.getUser();
   if (user?.refresh_token) {
     try {
-      // Revoke token endpoint
-      await fetch(`${authority}/oauth2/revoke`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          token: user.refresh_token,
-          client_id: clientId,
-        }),
-      });
-    } catch {
-      // Ignored if network unavailable
+      await revokeRefreshToken(user.refresh_token);
+    } catch (error) {
+      // The local session is dropped anyway, but a failed revocation must be visible.
+      console.error("The refresh token could not be revoked", error);
     }
   }
   await userManager.removeUser();

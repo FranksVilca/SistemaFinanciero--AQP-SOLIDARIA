@@ -5,6 +5,7 @@ import { FLOCI_ENV } from "./test/floci/flociEnv.js";
 export default defineConfig({
   test: {
     include: ["test/floci/**/*.test.ts"],
+    exclude: ["test/floci/e2e/**", "node_modules/**"],
     globalSetup: ["test/floci/globalSetup.ts"],
     env: { ...FLOCI_ENV },
     fileParallelism: false,

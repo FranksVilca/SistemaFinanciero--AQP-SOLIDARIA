@@ -46,7 +46,8 @@ async function waitFor(stackName: string, done: (status: string | undefined) => 
 /** Deploys infra/template.yaml (SAM included) as a stack, replacing a previous one, and returns its resources. */
 export async function deployStack(
   stackName: string,
-  parameters: Record<string, string>
+  parameters: Record<string, string>,
+  templateBody: string = TEMPLATE
 ): Promise<StackResourceSummary[]> {
   await cloudFormation.send(new DeleteStackCommand({ StackName: stackName }));
   await waitFor(stackName, (status) => status === undefined);
@@ -54,7 +55,7 @@ export async function deployStack(
   await cloudFormation.send(
     new CreateStackCommand({
       StackName: stackName,
-      TemplateBody: TEMPLATE,
+      TemplateBody: templateBody,
       Capabilities: CAPABILITIES as never,
       Parameters: Object.entries(parameters).map(([ParameterKey, ParameterValue]) => ({
         ParameterKey,
@@ -80,3 +81,20 @@ export const countOf = (resources: StackResourceSummary[], type: string): number
 
 export const physicalIdOf = (resources: StackResourceSummary[], type: string): string =>
   resources.find((resource) => resource.ResourceType === type)!.PhysicalResourceId!;
+
+/**
+ * The template without the simulation function: what the production stage ends up with, since that function only
+ * exists in the academic stage. Floci cannot deploy the production stage from the full template because its static
+ * reference check rejects the Fn::If branches that SAM generates around the conditional function; real CloudFormation
+ * accepts them.
+ */
+export function productionEquivalentTemplate(): string {
+  const lines = TEMPLATE.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.startsWith("  SimulateDonationFunction:"));
+  if (start < 0) throw new Error("SimulateDonationFunction is no longer declared in the template");
+
+  // The resource ends at the next line that is not indented deeper than the resource name (or is a top-level key).
+  let end = start + 1;
+  while (end < lines.length && !/^ {0,2}\S/.test(lines[end])) end++;
+  return [...lines.slice(0, start), ...lines.slice(end)].join("\n");
+}
