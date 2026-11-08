@@ -38,6 +38,10 @@ La CA exportada queda en `.local/floci-root-ca.crt`.
 > la personalización de Cognito. La plantilla define la marca del Hosted UI clásico (`CognitoHostedUiBranding`), que
 > solo se verá al desplegar en AWS real.
 
+El inicio de sesión se abre en una **ventana emergente** con la página del proveedor de identidad: la contraseña nunca
+pasa por la app y no pierdes tu lugar. Si el navegador bloquea la ventana, el mismo inicio de sesión continúa en la
+página completa; si la cierras, no pasa nada.
+
 Recorrido sugerido: entra como donante, dona S/ 50 a un proyecto, ve "Mis Donaciones", pulsa "Simular Aprobación" y
 sal; luego entra como auditor y revisa el registro (actores seudonimizados `usr_…`).
 

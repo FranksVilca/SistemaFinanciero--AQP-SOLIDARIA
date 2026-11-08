@@ -20,9 +20,11 @@ const AuthContext = createContext<AuthContextType>({
   logout: async () => {},
 });
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+const IDENTITY_PROVIDER_UNREACHABLE =
+  "No se pudo contactar al proveedor de identidad. Revisa tu conexión (en local: que el navegador confíe en el certificado del emulador, ver docs/ver-el-frontend.md) e inténtalo de nuevo.";
+
+/** Starts the sign-in and keeps the message to show when it cannot start. */
+function useSignIn(): { authError: string | null; login: () => Promise<void> } {
   const [authError, setAuthError] = useState<string | null>(null);
 
   const login = React.useCallback(async () => {
@@ -31,11 +33,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loginWithOidc();
     } catch (error) {
       console.error("Sign-in could not start", error);
-      setAuthError(
-        "No se pudo contactar al proveedor de identidad. Revisa tu conexión (en local: que el navegador confíe en el certificado del emulador, ver docs/ver-el-frontend.md) e inténtalo de nuevo."
-      );
+      setAuthError(IDENTITY_PROVIDER_UNREACHABLE);
     }
   }, []);
+
+  return { authError, login };
+}
+
+/** The roles of the person: the Cognito groups carried by the token. */
+function rolesOf(user: User | null): string[] {
+  const rawGroups = user?.profile?.["cognito:groups"];
+  if (Array.isArray(rawGroups)) return rawGroups as string[];
+  return typeof rawGroups === "string" ? [rawGroups] : [];
+}
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const { authError, login } = useSignIn();
 
   useEffect(() => {
     userManager
@@ -62,13 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const roles = React.useMemo(() => {
-    if (!user?.profile) return [];
-    const rawGroups = user.profile["cognito:groups"];
-    if (Array.isArray(rawGroups)) return rawGroups as string[];
-    if (typeof rawGroups === "string") return [rawGroups];
-    return [];
-  }, [user]);
+  const roles = React.useMemo(() => rolesOf(user), [user]);
 
   return (
     <AuthContext.Provider

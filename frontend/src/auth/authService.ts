@@ -1,4 +1,5 @@
 import { UserManager, WebStorageStateStore, InMemoryWebStorage, User } from "oidc-client-ts";
+import { isPopupBlocked, isPopupClosedByPerson } from "./popup.js";
 import { logoutUrlOf, revocationEndpointOf } from "./revocation.js";
 
 const authority =
@@ -13,6 +14,8 @@ export const userManager = new UserManager({
   authority,
   client_id: clientId,
   redirect_uri: redirectUri,
+  // The sign-in window returns to the same page that the full-page redirect does.
+  popup_redirect_uri: redirectUri,
   post_logout_redirect_uri: postLogoutRedirectUri,
   response_type: "code",
   scope:
@@ -21,8 +24,21 @@ export const userManager = new UserManager({
   loadUserInfo: false,
 });
 
+const SIGN_IN_WINDOW = { width: 480, height: 720 };
+
+/**
+ * Signs in through the identity provider's own page, in a window: the SPA never sees the password and the person keeps
+ * their place in the app. If the browser blocks the window, the same sign-in continues in the whole page; if the
+ * person closes it, nothing happened.
+ */
 export async function loginWithOidc(): Promise<void> {
-  await userManager.signinRedirect();
+  try {
+    await userManager.signinPopup({ popupWindowFeatures: SIGN_IN_WINDOW, popupAbortOnClose: true });
+  } catch (error) {
+    if (isPopupClosedByPerson(error)) return;
+    if (!isPopupBlocked(error)) throw error;
+    await userManager.signinRedirect();
+  }
 }
 
 // The authorization code can be exchanged only once. React may run the callback effect twice (StrictMode in

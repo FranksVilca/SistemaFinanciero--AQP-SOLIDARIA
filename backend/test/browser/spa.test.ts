@@ -54,13 +54,23 @@ async function newPage(trustCertificate = true): Promise<{ context: BrowserConte
   return { context, page, watched };
 }
 
+/** Clicks the control that starts the sign-in and returns the window the identity provider opens. */
+async function openSignInWindow(page: Page, startSignIn: () => Promise<void>): Promise<Page> {
+  const [popup] = await Promise.all([page.waitForEvent("popup"), startSignIn()]);
+  await popup.waitForURL(/cognito-idp\/login/);
+  return popup;
+}
+
+async function completeSignIn(popup: Page, email: string, password = DEMO_PASSWORD): Promise<void> {
+  await popup.fill("#username", email);
+  await popup.fill('input[name="password"]', password);
+  await Promise.all([popup.waitForEvent("close"), popup.locator('button[type="submit"]').click()]);
+}
+
 async function signIn(page: Page, email: string): Promise<void> {
   await page.goto(`${SITE}/`, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: /Iniciar Sesión/ }).click();
-  await page.waitForURL(/cognito-idp\/login/);
-  await page.fill("#username", email);
-  await page.fill('input[name="password"]', DEMO_PASSWORD);
-  await Promise.all([page.waitForURL(`${SITE}/`), page.locator('button[type="submit"]').click()]);
+  const popup = await openSignInWindow(page, () => page.getByRole("button", { name: /Iniciar Sesión/ }).click());
+  await completeSignIn(popup, email);
   await page.getByText(email).waitFor();
 }
 
@@ -190,7 +200,8 @@ describe.each(SITES)("SPA served as: %s", (kind) => {
     // Open the history first, so it is in the cache before the donation exists.
     await page.getByRole("link", { name: "Mis Donaciones" }).click();
     await page.getByRole("heading", { name: /Mi Historial de Donaciones/ }).waitFor();
-    await page.waitForLoadState("networkidle");
+    // The list is loaded when the loading indicator is gone: counting earlier would read an empty list.
+    await page.getByRole("status").waitFor({ state: "detached" });
     const donationsBefore = await donationCount();
     const raisedBefore = await raisedByFirstProject();
 
@@ -227,13 +238,10 @@ describe.each(SITES)("SPA served as: %s", (kind) => {
 
     await page.getByRole("button", { name: /Salir/ }).click();
     await page.getByRole("button", { name: /Iniciar Sesión/ }).waitFor();
-    await page.getByRole("button", { name: /Iniciar Sesión/ }).click();
 
     // Not straight back in as the auditor: the sign-in form is shown again.
-    await page.waitForURL(/cognito-idp\/login/);
-    await page.fill("#username", "donante@aqpsolidaria.pe");
-    await page.fill('input[name="password"]', DEMO_PASSWORD);
-    await Promise.all([page.waitForURL(`${SITE}/`), page.locator('button[type="submit"]').click()]);
+    const popup = await openSignInWindow(page, () => page.getByRole("button", { name: /Iniciar Sesión/ }).click());
+    await completeSignIn(popup, "donante@aqpsolidaria.pe");
     await page.getByText("donante@aqpsolidaria.pe").waitFor();
 
     const text = await bodyText(page);
@@ -297,25 +305,59 @@ describe.each(SITES)("SPA served as: %s", (kind) => {
 
     await page.getByRole("button", { name: /Registrar intención de donación/ }).click();
     await page.getByText("Debes iniciar sesión").waitFor();
-    await page.getByRole("button", { name: /Iniciar sesión con Cognito/ }).click();
 
-    await page.waitForURL(/cognito-idp\/login/);
+    const popup = await openSignInWindow(page, () =>
+      page.getByRole("button", { name: /Iniciar sesión con Cognito/ }).click()
+    );
+    expect(popup.url()).toMatch(/cognito-idp\/login/);
+    expect(page.url()).toContain("/projects/"); // the person kept their place in the app
     await context.close();
   });
 
   it("keeps the person on the sign-in page when the password is wrong", async () => {
     const { context, page } = await newPage();
     await page.goto(`${SITE}/`, { waitUntil: "networkidle" });
+    const popup = await openSignInWindow(page, () => page.getByRole("button", { name: /Iniciar Sesión/ }).click());
+
+    await popup.fill("#username", "donante@aqpsolidaria.pe");
+    await popup.fill('input[name="password"]', "NotThePassword1!");
+    await popup.locator('button[type="submit"]').click();
+    await popup.waitForLoadState("networkidle");
+
+    expect(popup.isClosed()).toBe(false);
+    expect(popup.url()).toMatch(/cognito-idp\/login/);
+    expect(await page.getByRole("button", { name: /Iniciar Sesión/ }).count()).toBe(1); // still signed out
+    await context.close();
+  });
+
+  it("does nothing, and shows no error, when the person closes the sign-in window", async () => {
+    const { context, page, watched } = await newPage();
+    await page.goto(`${SITE}/`, { waitUntil: "networkidle" });
+    const popup = await openSignInWindow(page, () => page.getByRole("button", { name: /Iniciar Sesión/ }).click());
+
+    await popup.close();
+    await page.waitForTimeout(1_500); // the page notices the closed window
+
+    expect(await page.getByRole("alert").count()).toBe(0);
+    expect(await page.getByRole("button", { name: /Iniciar Sesión/ }).count()).toBe(1);
+    expect(watched.consoleErrors).toEqual([]);
+    await context.close();
+  });
+
+  it("continues the sign-in in the whole page when the browser blocks the window", async () => {
+    const { context, page } = await newPage();
+    await page.addInitScript(() => {
+      window.open = () => null; // what a popup blocker answers
+    });
+    await page.goto(`${SITE}/`, { waitUntil: "networkidle" });
+
     await page.getByRole("button", { name: /Iniciar Sesión/ }).click();
+
     await page.waitForURL(/cognito-idp\/login/);
-
     await page.fill("#username", "donante@aqpsolidaria.pe");
-    await page.fill('input[name="password"]', "NotThePassword1!");
-    await page.locator('button[type="submit"]').click();
-    await page.waitForLoadState("networkidle");
-
-    expect(page.url()).toMatch(/cognito-idp\/login/);
-    expect(page.url()).not.toContain(SITE);
+    await page.fill('input[name="password"]', DEMO_PASSWORD);
+    await Promise.all([page.waitForURL(`${SITE}/`), page.locator('button[type="submit"]').click()]);
+    await page.getByText("donante@aqpsolidaria.pe").waitFor();
     await context.close();
   });
 
