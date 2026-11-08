@@ -1,5 +1,5 @@
 import React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { donationsApi } from "../services/apiClient.js";
 import { useAuth } from "../auth/AuthContext.js";
 import { formatPEN } from "../types/index.js";
@@ -8,6 +8,7 @@ import { History, Loader2, AlertCircle, HeartHandshake } from "lucide-react";
 
 export const DonorHistoryPage: React.FC = () => {
   const { user, login } = useAuth();
+  const queryClient = useQueryClient();
 
   const {
     data: donations,
@@ -113,7 +114,15 @@ export const DonorHistoryPage: React.FC = () => {
                   Fecha de registro: {new Date(d.createdAt).toLocaleString("es-PE")}
                 </div>
 
-                <SimulationControls donation={d} onSuccess={() => refetch()} />
+                <SimulationControls
+                  donation={d}
+                  onSuccess={() => {
+                    refetch();
+                    // An approved donation changes the amount raised, which the catalog and the project page show.
+                    queryClient.invalidateQueries({ queryKey: ["projects"] });
+                    queryClient.invalidateQueries({ queryKey: ["project"] });
+                  }}
+                />
               </div>
             );
           })}

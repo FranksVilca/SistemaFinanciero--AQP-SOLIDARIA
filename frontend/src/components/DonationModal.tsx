@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Project, formatPEN } from "../types/index.js";
+import { useQueryClient } from "@tanstack/react-query";
 import { donationsApi } from "../services/apiClient.js";
 import { useAuth } from "../auth/AuthContext.js";
 import { X, ShieldAlert, CheckCircle2, Loader2 } from "lucide-react";
@@ -12,6 +13,7 @@ interface DonationModalProps {
 
 export const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, project }) => {
   const { user, login } = useAuth();
+  const queryClient = useQueryClient();
   const [amountSoles, setAmountSoles] = useState<string>("50");
   const [isLoading, setIsLoading] = useState(false);
   const [successDonationId, setSuccessDonationId] = useState<string | null>(null);
@@ -46,6 +48,8 @@ export const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, p
         idempotencyKey
       );
       setSuccessDonationId(result.donationId);
+      // The history may already be cached from an earlier visit; it must show this donation.
+      queryClient.invalidateQueries({ queryKey: ["my-donations"] });
     } catch (err: any) {
       setErrorMessage(err.message || "Error al registrar la intención de donación");
     } finally {
@@ -78,7 +82,8 @@ export const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, p
               Tu intención de aporte por{" "}
               <strong>{formatPEN(Math.round(parseFloat(amountSoles) * 100))}</strong> para{" "}
               <em>{project.title}</em> ha sido registrada en estado{" "}
-              <span className="font-semibold text-amber-600">PENDIENTE_SIMULACION</span>.
+              <span className="font-semibold text-amber-600">PENDIENTE_SIMULACION</span>.{" "}
+              Para completarla, entra a <strong>Mis Donaciones</strong> y pulsa <strong>Simular Aprobación</strong>.
             </p>
             <div className="bg-slate-50 p-3 rounded-lg text-xs font-mono text-slate-500 mb-6 break-all">
               ID: {successDonationId}
