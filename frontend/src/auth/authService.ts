@@ -25,9 +25,13 @@ export async function loginWithOidc(): Promise<void> {
   await userManager.signinRedirect();
 }
 
-export async function handleOidcCallback(): Promise<User | null> {
-  const user = await userManager.signinCallback();
-  return user ?? null;
+// The authorization code can be exchanged only once. React may run the callback effect twice (StrictMode in
+// development), so every call of the same page load shares the exchange that is already in progress.
+let callbackInProgress: Promise<User | null> | undefined;
+
+export function handleOidcCallback(): Promise<User | null> {
+  callbackInProgress ??= userManager.signinCallback().then((user) => user ?? null);
+  return callbackInProgress;
 }
 
 /** Revokes the refresh token (and with it the access and ID tokens minted from it) before the local session is dropped. */

@@ -11,7 +11,10 @@
     "test:infra": "vitest run test/infra --config vitest.infra.config.ts",
     "typecheck": "tsc --noEmit",
     "test:floci": "vitest run --config vitest.floci.config.ts",
-    "test:floci:e2e": "vitest run --config vitest.floci-e2e.config.ts"
+    "test:floci:e2e": "vitest run --config vitest.floci-e2e.config.ts",
+    "local:stack": "vite-node scripts/localStack.ts",
+    "local:stop": "vite-node scripts/localStop.ts",
+    "test:browser": "vitest run --config vitest.browser.config.ts"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.758.0",
@@ -27,6 +30,7 @@
     "@aws-sdk/client-lambda": "^3.1164.0",
     "@types/node": "^22.13.0",
     "jszip": "^3.10.2",
+    "playwright-core": "^1.65.0",
     "typescript": "^5.8.0",
     "vitest": "^3.0.5",
     "yaml": "^2.9.1"

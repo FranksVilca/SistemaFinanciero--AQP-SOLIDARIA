@@ -43,6 +43,9 @@ secure-donations-2026/
 
 ## 3. Prerrequisitos y Configuración Local
 
+> **Ver el frontend sin AWS:** `npm run local` y abrir http://localhost:3000 (usuarios de ejemplo y pruebas de
+> navegador en [docs/ver-el-frontend.md](docs/ver-el-frontend.md)).
+
 - **Node.js**: v24.x (`node -v`)
 - **npm**: v11.x
 - **AWS CLI**: v2 configurado con usuario IAM (no root) con MFA

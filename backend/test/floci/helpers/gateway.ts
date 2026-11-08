@@ -2,6 +2,7 @@ import {
   ApiGatewayV2Client,
   GetAuthorizersCommand,
   GetRoutesCommand,
+  UpdateApiCommand,
   UpdateAuthorizerCommand,
   UpdateRouteCommand,
 } from "@aws-sdk/client-apigatewayv2";
@@ -169,4 +170,24 @@ export function signInSettings(): { scopes: string[]; redirectUri: string } {
   );
   if (!redirectUri) throw new Error("The academic stage declares no localhost callback URL");
   return { scopes: client.AllowedOAuthScopes as string[], redirectUri };
+}
+
+/**
+ * Floci does not import the CORS configuration of the SAM API either (it comes out empty, so every preflight fails).
+ * The configuration that the template declares is applied here. The CloudFront origin is built from a distribution that
+ * the emulator does not serve, so only the literal origins (the local SPA) are applied.
+ */
+export async function applyTemplateCorsToApi(apiId: string): Promise<void> {
+  const [, api] = resourcesOfType(loadTemplate("academic"), "AWS::Serverless::HttpApi")[0];
+  const cors = propertiesOf(api).CorsConfiguration as JsonObject;
+  await gateway.send(
+    new UpdateApiCommand({
+      ApiId: apiId,
+      CorsConfiguration: {
+        AllowOrigins: (cors.AllowOrigins as unknown[]).filter((origin): origin is string => typeof origin === "string"),
+        AllowHeaders: cors.AllowHeaders as string[],
+        AllowMethods: cors.AllowMethods as string[],
+      },
+    })
+  );
 }

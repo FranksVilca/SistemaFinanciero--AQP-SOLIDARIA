@@ -1,17 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { AdminUserGlobalSignOutCommand } from "@aws-sdk/client-cognito-identity-provider";
 import type { StackResourceSummary } from "@aws-sdk/client-cloudformation";
-import { DescribeTableCommand, DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { IAMClient, PutRolePolicyCommand } from "@aws-sdk/client-iam";
-import {
-  GetFunctionConfigurationCommand,
-  LambdaClient,
-  UpdateFunctionCodeCommand,
-  UpdateFunctionConfigurationCommand,
-} from "@aws-sdk/client-lambda";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { handlerOf, lambdaFunctions, loadTemplate, policiesOf } from "../../infra/helpers/loadTemplate.js";
-import { FLOCI_ENV } from "../flociEnv.js";
 import { cognito, createUserInGroup, hostedSignIn, obtainTokens, type PoolRef } from "../helpers/cognitoUsers.js";
 import {
   STAGE,
@@ -21,8 +11,8 @@ import {
   pointAuthorizerAtEmulatorIssuer,
   signInSettings,
 } from "../helpers/gateway.js";
+import { prepareFunctions } from "../helpers/functions.js";
 import { packageFunctions } from "../helpers/packageFunctions.js";
-import { buildPolicyDocument } from "../helpers/policyResolver.js";
 import { countOf, deleteStack, deployStack, physicalIdOf } from "../helpers/stack.js";
 import { jwtPayload } from "../helpers/totp.js";
 
@@ -38,16 +28,7 @@ import { jwtPayload } from "../helpers/totp.js";
 
 const STACK = "zta-e2e";
 const runId = randomUUID().slice(0, 8);
-// How the Lambda containers reach the emulator: Docker Desktop and recent Docker releases resolve host.docker.internal.
-const EMULATOR_FROM_LAMBDA = process.env.FLOCI_LAMBDA_ENDPOINT ?? "http://host.docker.internal:4566";
-const LAMBDA_TIMEOUT_SECONDS = 30;
 const DONATION_CENTS = 6_000;
-const config = {
-  region: FLOCI_ENV.AWS_REGION,
-  endpoint: FLOCI_ENV.FLOCI_ENDPOINT,
-  credentials: { accessKeyId: FLOCI_ENV.AWS_ACCESS_KEY_ID, secretAccessKey: FLOCI_ENV.AWS_SECRET_ACCESS_KEY },
-};
-
 interface ApiResult<T = Record<string, unknown>> {
   status: number;
   body: T;
@@ -79,53 +60,6 @@ async function api<T = Record<string, unknown>>(
     // Not JSON (for example the plain text of a gateway rejection): keep the raw text.
   }
   return { status: response.status, body: body as T };
-}
-
-/** Puts the real code in each function, points it at the emulator and gives its role the inline policy of the template. */
-async function prepareFunctions(resources: StackResourceSummary[], code: Buffer): Promise<void> {
-  const lambda = new LambdaClient(config);
-  const iam = new IAMClient(config);
-  const dynamo = new DynamoDBClient(config);
-
-  const tableArns: Record<string, string> = {};
-  for (const [logicalId, name] of [
-    ["ProjectsTable", `aqp-projects-${STAGE}`],
-    ["DonationsTable", `aqp-donations-${STAGE}`],
-    ["IdempotencyTable", `aqp-idempotency-${STAGE}`],
-    ["AuditTable", `aqp-audit-${STAGE}`],
-  ]) {
-    tableArns[logicalId] = (await dynamo.send(new DescribeTableCommand({ TableName: name }))).Table!.TableArn!;
-  }
-
-  const definitions = lambdaFunctions(loadTemplate("academic"));
-  for (const functionResource of resources.filter((resource) => resource.ResourceType === "AWS::Lambda::Function")) {
-    const functionName = functionResource.PhysicalResourceId!;
-    const current = await lambda.send(new GetFunctionConfigurationCommand({ FunctionName: functionName }));
-    const definition = definitions.find(([, candidate]) => handlerOf(candidate) === current.Handler)![1];
-
-    await lambda.send(new UpdateFunctionCodeCommand({ FunctionName: functionName, ZipFile: code }));
-    await lambda.send(
-      new UpdateFunctionConfigurationCommand({
-        FunctionName: functionName,
-        Timeout: LAMBDA_TIMEOUT_SECONDS,
-        Environment: {
-          Variables: {
-            ...current.Environment?.Variables,
-            DYNAMODB_ENDPOINT: EMULATOR_FROM_LAMBDA,
-            // Floci serves the OIDC userInfo endpoint of every pool under /cognito-idp (it has no hosted domain routing).
-            COGNITO_USERINFO_URL: `${EMULATOR_FROM_LAMBDA}/cognito-idp/oauth2/userInfo`,
-          },
-        },
-      })
-    );
-    await iam.send(
-      new PutRolePolicyCommand({
-        RoleName: current.Role!.split("/").pop()!,
-        PolicyName: "template-inline-policy",
-        PolicyDocument: buildPolicyDocument(policiesOf(definition), tableArns),
-      })
-    );
-  }
 }
 
 async function signUp(pool: PoolRef, label: string, group: string): Promise<string> {

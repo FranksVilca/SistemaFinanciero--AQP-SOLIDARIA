@@ -13,6 +13,9 @@ services:
       # Cognito does not accept access tokens that live less than 5 minutes; a test that needs an expired token
       # shortens the lifetime to a few seconds, which the emulator only allows with this setting off.
       FLOCI_SERVICES_COGNITO_ENFORCE_TOKEN_VALIDITY_LIMITS: "false"
+      # Real Cognito answers the browser's requests for its discovery document and keys from any origin; the emulator
+      # needs the origin of the local SPA to be allowed for the same to work.
+      EXTRA_CORS_ALLOWED_ORIGINS: http://localhost:3000
     ports:
       - "4566:4566"
     volumes:

@@ -6,6 +6,7 @@ interface AuthContextType {
   user: User | null;
   roles: string[];
   isLoading: boolean;
+  authError: string | null;
   login: () => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -14,6 +15,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   roles: [],
   isLoading: true,
+  authError: null,
   login: async () => {},
   logout: async () => {},
 });
@@ -21,6 +23,19 @@ const AuthContext = createContext<AuthContextType>({
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  const login = React.useCallback(async () => {
+    setAuthError(null);
+    try {
+      await loginWithOidc();
+    } catch (error) {
+      console.error("Sign-in could not start", error);
+      setAuthError(
+        "No se pudo contactar al proveedor de identidad. Revisa tu conexión (en local: que el navegador confíe en el certificado del emulador, ver docs/ver-el-frontend.md) e inténtalo de nuevo."
+      );
+    }
+  }, []);
 
   useEffect(() => {
     userManager
@@ -61,7 +76,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         roles,
         isLoading,
-        login: loginWithOidc,
+        authError,
+        login,
         logout: logoutWithOidc,
       }}
     >

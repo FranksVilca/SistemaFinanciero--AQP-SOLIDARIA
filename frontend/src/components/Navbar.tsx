@@ -4,7 +4,7 @@ import { useAuth } from "../auth/AuthContext.js";
 import { HeartHandshake, LogIn, LogOut, Shield, User, FileText } from "lucide-react";
 
 export const Navbar: React.FC = () => {
-  const { user, roles, login, logout } = useAuth();
+  const { user, roles, authError, login, logout } = useAuth();
 
   const isDonante = roles.includes("DONANTE");
   const isGestor = roles.includes("GESTOR");
@@ -102,6 +102,11 @@ export const Navbar: React.FC = () => {
           </div>
         </div>
       </div>
+      {authError && (
+        <div role="alert" className="bg-red-50 border-t border-red-200 text-red-800 text-sm px-4 py-2 text-center">
+          {authError}
+        </div>
+      )}
     </nav>
   );
 };
