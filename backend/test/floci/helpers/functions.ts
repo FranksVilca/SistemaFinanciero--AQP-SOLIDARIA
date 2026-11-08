@@ -8,7 +8,13 @@ import {
   UpdateFunctionCodeCommand,
   UpdateFunctionConfigurationCommand,
 } from "@aws-sdk/client-lambda";
-import { handlerOf, lambdaFunctions, loadTemplate, policiesOf } from "../../infra/helpers/loadTemplate.js";
+import {
+  attachedPolicyDocuments,
+  handlerOf,
+  lambdaFunctions,
+  loadTemplate,
+  policiesOf,
+} from "../../infra/helpers/loadTemplate.js";
 import { FLOCI_ENV } from "../flociEnv.js";
 import { cognito } from "./cognitoUsers.js";
 import { STAGE } from "./gateway.js";
@@ -49,12 +55,13 @@ export async function prepareFunctions(resources: StackResourceSummary[], code: 
   const lambda = new LambdaClient(config);
   const iam = new IAMClient(config);
   const tableArns = await tableArnsOfStage(physicalIdOf(resources, "AWS::Cognito::UserPool"));
-  const definitions = lambdaFunctions(loadTemplate("academic"));
+  const template = loadTemplate("academic");
+  const definitions = lambdaFunctions(template);
 
   for (const functionResource of resources.filter((resource) => resource.ResourceType === "AWS::Lambda::Function")) {
     const functionName = functionResource.PhysicalResourceId!;
     const current = await lambda.send(new GetFunctionConfigurationCommand({ FunctionName: functionName }));
-    const definition = definitions.find(([, candidate]) => handlerOf(candidate) === current.Handler)![1];
+    const [logicalId, definition] = definitions.find(([, candidate]) => handlerOf(candidate) === current.Handler)!;
 
     await lambda.send(new UpdateFunctionCodeCommand({ FunctionName: functionName, ZipFile: code }));
     await lambda.send(
@@ -77,7 +84,10 @@ export async function prepareFunctions(resources: StackResourceSummary[], code: 
       new PutRolePolicyCommand({
         RoleName: current.Role!.split("/").pop()!,
         PolicyName: "template-inline-policy",
-        PolicyDocument: buildPolicyDocument(policiesOf(definition), tableArns),
+        PolicyDocument: buildPolicyDocument(
+          [...policiesOf(definition), ...attachedPolicyDocuments(template, logicalId)],
+          tableArns
+        ),
       })
     );
   }

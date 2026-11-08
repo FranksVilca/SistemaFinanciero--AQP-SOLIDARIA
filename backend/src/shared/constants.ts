@@ -40,6 +40,13 @@ export const AUTHZ_ACTIONS = {
 
 export type AuthzAction = (typeof AUTHZ_ACTIONS)[keyof typeof AUTHZ_ACTIONS];
 
+/** Actions the system performs by itself (not requests of a person): they are audited but never authorized. */
+export const SYSTEM_ACTIONS = {
+  assignInitialRole: "AssignInitialRole",
+} as const;
+
+export type AuditAction = AuthzAction | (typeof SYSTEM_ACTIONS)[keyof typeof SYSTEM_ACTIONS];
+
 /** Actions that never require identity and are never audited. */
 export const PUBLIC_ACTIONS: readonly AuthzAction[] = [
   AUTHZ_ACTIONS.listProjects,
@@ -64,6 +71,7 @@ export const AUDIT_EVENT_TYPES = {
   projectPublished: "PROJECT_PUBLISHED",
   donationCreated: "DONATION_CREATED",
   donationTransitioned: "DONATION_TRANSITIONED",
+  roleAssigned: "ROLE_ASSIGNED",
 } as const;
 
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[keyof typeof AUDIT_EVENT_TYPES];

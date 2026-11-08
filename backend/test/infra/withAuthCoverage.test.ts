@@ -6,6 +6,10 @@ import { STAGES, handlerOf, lambdaFunctions, loadTemplate } from "./helpers/load
 
 const SOURCE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../src");
 
+// Cognito triggers are not API routes: nobody calls them with a token, Cognito calls them with an event. They are the
+// only functions allowed to skip withAuth, and only while the pool names them as its trigger (identityTrigger.test.ts).
+export const COGNITO_TRIGGER_HANDLERS = ["identity/addDonorToGroup.handler"];
+
 /** "projects/listProjects.handler" is exported as `handler` by backend/src/projects/listProjects.ts. */
 function resolveHandlerModule(handlerReference: string): { file: string; exportName: string } {
   const separator = handlerReference.lastIndexOf(".");
@@ -19,7 +23,7 @@ export function isWithAuthHandler(candidate: unknown): boolean {
   return typeof candidate === "function" && (candidate as unknown as Record<symbol, unknown>)[WITH_AUTH] === true;
 }
 
-describe("every API route is exported through withAuth", () => {
+describe("every API route is exported through withAuth, and only Cognito triggers are not", () => {
   it("rejects a handler that was not produced by withAuth", () => {
     expect(isWithAuthHandler(async () => ({ statusCode: 200 }))).toBe(false);
     expect(isWithAuthHandler(undefined)).toBe(false);
@@ -32,11 +36,19 @@ describe("every API route is exported through withAuth", () => {
       expect(handlers.length).toBeGreaterThan(0);
     });
 
-    it.each(handlers)("%s uses withAuth (%s)", async (_name, handlerReference) => {
+    const routes = handlers.filter(([, handlerReference]) => !COGNITO_TRIGGER_HANDLERS.includes(handlerReference));
+
+    it.each(routes)("%s uses withAuth (%s)", async (_name, handlerReference) => {
       const { file, exportName } = resolveHandlerModule(handlerReference);
       const loaded: Record<string, unknown> = await import(pathToFileURL(file).href);
 
       expect(isWithAuthHandler(loaded[exportName])).toBe(true);
+    });
+
+    it("exempts only the declared Cognito triggers", () => {
+      const exempted = handlers.map(([, handlerReference]) => handlerReference).filter((reference) => COGNITO_TRIGGER_HANDLERS.includes(reference));
+
+      expect(exempted).toEqual(COGNITO_TRIGGER_HANDLERS);
     });
   });
 });

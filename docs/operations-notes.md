@@ -27,7 +27,9 @@ Si el usuario se elimina de Cognito, sus eventos **se conservan** con el mismo s
 
 El MFA es obligatorio para todo el pool de usuarios (`MfaConfiguration: ON`, solo aplicación autenticadora; no hay SMS). En el primer inicio de sesión, el Hosted UI de Cognito pide configurar el autenticador (QR o clave) **antes** de emitir cualquier token. Una persona sin segundo factor configurado no obtiene tokens.
 
-Los grupos (`DONANTE`, `GESTOR`, `AUDITOR`) se asignan en Cognito por una persona administradora; un usuario nuevo sin grupo no puede usar ninguna acción protegida. Hoy **nadie recibe `DONANTE` automáticamente**: quien se registra queda sin grupo hasta que una persona administradora lo agrega.
+Los grupos (`DONANTE`, `GESTOR`, `AUDITOR`) se asignan en Cognito por una persona administradora; un usuario nuevo sin grupo no puede usar ninguna acción protegida. **`DONANTE` se asigna solo**: quien se registra por el Hosted UI y confirma su correo entra como donante, gracias a un disparador de post-confirmación de Cognito (`AddDonorToGroupFunction`). Solo asigna ese rol, solo ante un registro nuevo (no al confirmar una recuperación de contraseña) y deja un evento `ROLE_ASSIGNED` en la auditoría. Las cuentas creadas **antes** de ese disparador no lo recibieron: agrégalas con `aws cognito-idp admin-add-user-to-group --user-pool-id <pool> --username <correo> --group-name DONANTE`.
+
+El registro por el Hosted UI **exige un correo real**: Cognito envía un código de verificación y sin él no se confirma la cuenta. Para cuentas de demostración con correos inventados, créalas como administrador (`admin-create-user` con `email_verified=true` y `--message-action SUPPRESS`): no se envía ningún correo. El MFA no depende del correo: cada persona enrola una aplicación autenticadora la primera vez.
 
 ### Reglas sobre los roles de una persona
 

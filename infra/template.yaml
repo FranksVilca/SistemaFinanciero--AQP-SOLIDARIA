@@ -79,7 +79,6 @@ Globals:
         IDEMPOTENCY_TABLE: !Ref IdempotencyTable
         AUDIT_TABLE: !Ref AuditTable
         COGNITO_USERINFO_URL: !Sub "https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com/oauth2/userInfo"
-        COGNITO_USER_POOL_ID: !Ref CognitoUserPool
         NODE_OPTIONS: "--enable-source-maps"
 
 Resources:
@@ -309,6 +308,12 @@ Resources:
         - email
       UsernameAttributes:
         - email
+      # Anyone can register (and becomes a donor, see AddDonorToGroupFunction); GESTOR and AUDITOR are granted by an
+      # administrator. It is stated here so that who may create accounts is a decision, not a default.
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      LambdaConfig:
+        PostConfirmation: !GetAtt AddDonorToGroupFunction.Arn
       # Cognito applies MFA per pool, not per group, so every user (donors included) enrolls TOTP once.
       MfaConfiguration: "ON"
       EnabledMfas:
@@ -320,6 +325,42 @@ Resources:
           RequireNumbers: true
           RequireSymbols: false
           RequireUppercase: true
+
+  # Cognito trigger: whoever confirms a new registration becomes a donor. It is not an API route, so it has no event.
+  # It must not reference the pool (the pool names it as its trigger): neither in its environment nor in its inline
+  # policy. The permission on the pool is the separate AddDonorToGroupPolicy below.
+  AddDonorToGroupFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/dist/
+      Handler: identity/addDonorToGroup.handler
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AuditTable.Arn
+
+  AddDonorToGroupPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: add-donor-to-group
+      Roles:
+        - !Ref AddDonorToGroupFunctionRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: cognito-idp:AdminAddUserToGroup
+            Resource: !GetAtt CognitoUserPool.Arn
+
+  AddDonorToGroupInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref AddDonorToGroupFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt CognitoUserPool.Arn
 
   CognitoGroupDonante:
     Type: AWS::Cognito::UserPoolGroup
@@ -436,11 +477,12 @@ Resources:
     Properties:
       StageName: !Ref StageName
       CorsConfiguration:
-        AllowOrigins: !If
-          - IsAcademicStage
-          - - !Sub "https://${CloudFrontDistribution.DomainName}"
-            - http://localhost:3000
-          - - !Sub "https://${CloudFrontDistribution.DomainName}"
+        # The condition goes on the element, not on the list: SAM does not understand an intrinsic function that is the
+        # whole list and writes the CORS of the API wrongly (API Gateway then ignores it and answers no preflight at all).
+        # backend/test/infra/corsAsSamReadsIt.test.ts and infra/scripts/check_sam_cors.py guard this.
+        AllowOrigins:
+          - !Sub "https://${CloudFrontDistribution.DomainName}"
+          - !If [IsAcademicStage, "http://localhost:3000", !Ref AWS::NoValue]
         AllowHeaders:
           - Content-Type
           - Authorization
@@ -577,6 +619,10 @@ Resources:
     Properties:
       CodeUri: ../backend/dist/
       Handler: projects/publishProject.handler
+      Environment:
+        Variables:
+          # The pool whose groups this function rereads (a token keeps the groups it was issued with).
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
       Policies:
         - Version: '2012-10-17'
           Statement:
@@ -642,6 +688,10 @@ Resources:
     Properties:
       CodeUri: ../backend/dist/
       Handler: donations/simulateDonation.handler
+      Environment:
+        Variables:
+          # The pool whose groups this function rereads (a token keeps the groups it was issued with).
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
       Policies:
         - Version: '2012-10-17'
           Statement:
@@ -707,6 +757,10 @@ Resources:
     Properties:
       CodeUri: ../backend/dist/
       Handler: audit/getAuditEvents.handler
+      Environment:
+        Variables:
+          # The pool whose groups this function rereads (a token keeps the groups it was issued with).
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
       Policies:
         - Version: '2012-10-17'
           Statement:

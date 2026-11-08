@@ -167,6 +167,8 @@ jobs:
         run: cfn-lint
       - name: checkov (skips are justified in .checkov.yaml)
         run: checkov --config-file .checkov.yaml
+      - name: CORS of the API as SAM translates it (a condition around a whole list made API Gateway ignore it)
+        run: python infra/scripts/check_sam_cors.py infra/template.yaml
 
   deploy:
     # Only when every gate passed, on the main branch, and when a deploy role (OIDC, no long-lived keys) is configured.

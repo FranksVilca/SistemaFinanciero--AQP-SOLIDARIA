@@ -1,11 +1,15 @@
 import { randomUUID } from "node:crypto";
 import {
   AdminAddUserToGroupCommand,
+  AdminCreateUserCommand,
+  AdminListGroupsForUserCommand,
   AdminRemoveUserFromGroupCommand,
   AdminUserGlobalSignOutCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 import type { StackResourceSummary } from "@aws-sdk/client-cloudformation";
+import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { FLOCI_ENV } from "../flociEnv.js";
 import { cognito, createUserInGroup, hostedSignIn, obtainTokens, type PoolRef } from "../helpers/cognitoUsers.js";
 import {
   STAGE,
@@ -108,8 +112,8 @@ describe("full stack: gateway, authorizer, Lambda with its IAM role, DynamoDB an
   afterAll(() => deleteStack(STACK));
 
   describe("before the route scopes are applied: the backend is the second layer", () => {
-    it("deploys nine functions that answer through the gateway", async () => {
-      expect(countOf(resources, "AWS::Lambda::Function")).toBe(9);
+    it("deploys the nine API functions and the registration trigger", async () => {
+      expect(countOf(resources, "AWS::Lambda::Function")).toBe(10);
 
       const list = await api<unknown[]>("GET", "/v1/projects");
       expect(list.status).toBe(200);
@@ -229,6 +233,40 @@ describe("full stack: gateway, authorizer, Lambda with its IAM role, DynamoDB an
 
       expect((await api("GET", "/v1/audit", { token: scoped.donor.access })).status).toBe(403);
       expect((await api("GET", "/v1/audit", { token: scoped.manager.access })).status).toBe(403);
+    });
+
+    it("makes a newly registered user a donor through the Cognito trigger, and records it", async () => {
+      const username = `newcomer-${runId}@aqpsolidaria.pe`;
+      await cognito.send(
+        new AdminCreateUserCommand({ UserPoolId: userPoolId, Username: username, MessageAction: "SUPPRESS" })
+      );
+      const functionName = resources.find(
+        (resource) => resource.LogicalResourceId === "AddDonorToGroupFunction"
+      )!.PhysicalResourceId!;
+      // What Cognito sends when a registration is confirmed.
+      const event = {
+        triggerSource: "PostConfirmation_ConfirmSignUp",
+        userPoolId,
+        userName: username,
+        request: { userAttributes: { sub: randomUUID() } },
+      };
+
+      const lambda = new LambdaClient({
+        region: FLOCI_ENV.AWS_REGION,
+        endpoint: FLOCI_ENV.FLOCI_ENDPOINT,
+        credentials: { accessKeyId: FLOCI_ENV.AWS_ACCESS_KEY_ID, secretAccessKey: FLOCI_ENV.AWS_SECRET_ACCESS_KEY },
+      });
+      const result = await lambda.send(
+        new InvokeCommand({ FunctionName: functionName, Payload: Buffer.from(JSON.stringify(event)) })
+      );
+
+      expect(result.FunctionError).toBeUndefined();
+      const { Groups = [] } = await cognito.send(
+        new AdminListGroupsForUserCommand({ UserPoolId: userPoolId, Username: username })
+      );
+      expect(Groups.map((group) => group.GroupName)).toEqual(["DONANTE"]);
+      const trail = await api<Array<Record<string, unknown>>>("GET", "/v1/audit", { token: scoped.auditor.access });
+      expect(trail.body.map((item) => `${item.eventType}:${item.outcome}`)).toContain("ROLE_ASSIGNED:SUCCESS");
     });
 
     it("rejects a sensitive action once the role was removed, although the token still carries it", async () => {

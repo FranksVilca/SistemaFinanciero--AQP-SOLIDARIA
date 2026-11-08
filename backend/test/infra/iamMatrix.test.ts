@@ -32,7 +32,11 @@ const MATRIX: Record<string, Partial<Record<Table, string[]>>> = {
   "donations/simulateDonation.handler": { ProjectsTable: UPDATE, DonationsTable: [...READ, ...UPDATE], AuditTable: PUT },
   "donations/getMyDonations.handler": { DonationsTable: READ, AuditTable: PUT },
   "audit/getAuditEvents.handler": { AuditTable: [...READ, ...PUT] },
+  // Cognito trigger: records that it gave the donor role.
+  "identity/addDonorToGroup.handler": { AuditTable: PUT },
 };
+
+const COGNITO_TRIGGERS = ["identity/addDonorToGroup.handler"];
 
 const PUBLIC_HANDLERS = ["projects/listProjects.handler", "projects/getProject.handler", "projects/getProjectStats.handler"];
 const FORBIDDEN_ACTION = /Delete|BatchWrite|Scan|^dynamodb:\*$|^\*$/;
@@ -117,7 +121,10 @@ describe.each(STAGES)("least-privilege IAM in stage %s", (stage) => {
   });
 
   it("declares one route per function and no shared policy resources", () => {
-    for (const [, definition] of functions) expect(eventsOf(definition).length).toBe(1);
+    for (const [, definition] of functions) {
+      // An API function has one route; a Cognito trigger is called by Cognito and has none.
+      expect(eventsOf(definition).length).toBe(COGNITO_TRIGGERS.includes(handlerOf(definition)) ? 0 : 1);
+    }
     expect(Object.values(template.resources).filter((resource) => resource.Type === "AWS::IAM::ManagedPolicy")).toHaveLength(0);
   });
 });

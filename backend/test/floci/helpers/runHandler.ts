@@ -1,7 +1,6 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { inject, vi } from "vitest";
-import type { TestEvent } from "../../integration/helpers/events.js";
 import { FLOCI_ENV } from "../flociEnv.js";
 
 const SOURCE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../../src");
@@ -16,14 +15,14 @@ export interface RunOptions {
   userPoolId?: string;
 }
 
-type Handler = (event: TestEvent) => Promise<{ statusCode: number; body: string }>;
+type Handler = (event: unknown, context?: unknown) => Promise<unknown>;
 
 /** Runs the real handler with the credentials of its own IAM user. */
-export async function runHandlerAs(
+export async function runHandlerAs<T = { statusCode: number; body: string }>(
   handlerRef: string,
-  event: TestEvent,
+  event: unknown,
   options: RunOptions = {}
-): Promise<{ statusCode: number; body: string }> {
+): Promise<T> {
   const { accessKeyId, secretAccessKey } = credentialsOf(handlerRef);
   const names = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "COGNITO_USER_POOL_ID", "COGNITO_IDP_ENDPOINT"] as const;
   const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]));
@@ -44,7 +43,7 @@ export async function runHandlerAs(
       );
       groups.replaceGroupsLookup(async (principal) => principal.groups);
     }
-    return await loaded[handlerRef.slice(separator + 1)](event);
+    return (await loaded[handlerRef.slice(separator + 1)](event)) as T;
   } finally {
     for (const name of names) {
       if (previous[name] === undefined) delete process.env[name];

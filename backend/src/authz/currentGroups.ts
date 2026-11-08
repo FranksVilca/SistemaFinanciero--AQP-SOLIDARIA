@@ -1,7 +1,5 @@
-import {
-  AdminListGroupsForUserCommand,
-  CognitoIdentityProviderClient,
-} from "@aws-sdk/client-cognito-identity-provider";
+import { AdminListGroupsForUserCommand } from "@aws-sdk/client-cognito-identity-provider";
+import { cognitoClient } from "../shared/cognito.js";
 import { SESSION_CHECK_TIMEOUT_MS } from "../shared/constants.js";
 import { logError, logWarn } from "../shared/logger.js";
 import type { AuthPrincipal } from "./claims.js";
@@ -13,17 +11,6 @@ import type { AuthPrincipal } from "./claims.js";
  */
 export type GroupsLookup = (principal: AuthPrincipal) => Promise<string[] | undefined>;
 
-let cognito: CognitoIdentityProviderClient | undefined;
-
-function client(): CognitoIdentityProviderClient {
-  cognito ??= new CognitoIdentityProviderClient({
-    region: process.env.AWS_REGION || "us-east-1",
-    // Only set to point at an emulator; in AWS the SDK resolves the endpoint.
-    endpoint: process.env.COGNITO_IDP_ENDPOINT,
-  });
-  return cognito;
-}
-
 const lookupInCognito: GroupsLookup = async (principal) => {
   const userPoolId = process.env.COGNITO_USER_POOL_ID;
   if (!userPoolId) {
@@ -33,7 +20,7 @@ const lookupInCognito: GroupsLookup = async (principal) => {
 
   try {
     // A user has a handful of groups (the roles), far below the 60 that one page returns.
-    const { Groups = [] } = await client().send(
+    const { Groups = [] } = await cognitoClient().send(
       new AdminListGroupsForUserCommand({ UserPoolId: userPoolId, Username: principal.username ?? principal.sub }),
       { abortSignal: AbortSignal.timeout(SESSION_CHECK_TIMEOUT_MS) }
     );

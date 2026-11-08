@@ -18,7 +18,13 @@ import {
 import { CreateTableCommand, DeleteTableCommand, DynamoDBClient, ListTablesCommand } from "@aws-sdk/client-dynamodb";
 import type { GlobalSetupContext } from "vitest/node";
 import { buildTableDefinitions } from "../integration/helpers/tableDefinitions.js";
-import { handlerOf, lambdaFunctions, loadTemplate, policiesOf } from "../infra/helpers/loadTemplate.js";
+import {
+  attachedPolicyDocuments,
+  handlerOf,
+  lambdaFunctions,
+  loadTemplate,
+  policiesOf,
+} from "../infra/helpers/loadTemplate.js";
 import { FLOCI_ENV } from "./flociEnv.js";
 import { buildPolicyDocument } from "./helpers/policyResolver.js";
 
@@ -140,8 +146,10 @@ export default async function setup({ provide }: GlobalSetupContext): Promise<()
   // One IAM user per function, holding exactly the inline policy that infra/template.yaml gives its role.
   const iam = new IAMClient(clientConfig);
   const functionCredentials: Record<string, FunctionCredentials> = {};
-  for (const [logicalId, definition] of lambdaFunctions(loadTemplate("academic"))) {
-    const policyDocument = buildPolicyDocument(policiesOf(definition), arns);
+  const template = loadTemplate("academic");
+  for (const [logicalId, definition] of lambdaFunctions(template)) {
+    const policies = [...policiesOf(definition), ...attachedPolicyDocuments(template, logicalId)];
+    const policyDocument = buildPolicyDocument(policies, arns);
     functionCredentials[handlerOf(definition)] = await recreateUser(iam, `fn-${logicalId}`, policyDocument);
   }
   provide("functionCredentials", functionCredentials);

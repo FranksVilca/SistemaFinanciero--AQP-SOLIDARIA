@@ -53,6 +53,11 @@ function parseTemplateFile(): JsonObject {
   return parse(source, { customTags: customTags as never }) as JsonObject;
 }
 
+/** infra/template.yaml as written, with no Condition or Fn::If resolved: what SAM receives before it translates it. */
+export function rawTemplate(): JsonObject {
+  return parseTemplateFile();
+}
+
 function isObject(value: Json | undefined): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -170,6 +175,18 @@ export function eventsOf(definition: JsonObject): Array<[string, JsonObject]> {
 
 export function rawParameters(): Record<string, JsonObject> {
   return (parseTemplateFile().Parameters ?? {}) as Record<string, JsonObject>;
+}
+
+/**
+ * Policy documents of the AWS::IAM::Policy resources attached to the role that SAM creates for a function. A function
+ * whose permissions name a resource that depends on the function itself (the Cognito pool and its trigger) cannot carry
+ * them inline without a circular dependency, so they live here.
+ */
+export function attachedPolicyDocuments(template: ResolvedTemplate, functionLogicalId: string): JsonObject[] {
+  const role = `${functionLogicalId}Role`;
+  return resourcesOfType(template, "AWS::IAM::Policy")
+    .filter(([, policy]) => JSON.stringify(propertiesOf(policy).Roles).includes(role))
+    .map(([, policy]) => propertiesOf(policy).PolicyDocument as JsonObject);
 }
 
 export type { CollectionItem };

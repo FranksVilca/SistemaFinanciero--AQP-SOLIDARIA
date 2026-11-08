@@ -11,12 +11,12 @@
 
 | Suite | Comando | Archivos | Pruebas | Resultado |
 |---|---|---|---|---|
-| Unitarias (sin base de datos) | `npm run test` | 7 | 55 | PASS |
-| Integración (DynamoDB Local) | `npm run test:integration` | 11 | 56 | PASS |
-| Infraestructura (`infra/template.yaml`, etapas `academic` y `production`) | `npm run test:infra` | 12 | 179 | PASS |
-| Emulador Floci con IAM y TLS activos, sin socket de Docker (políticas IAM del template, Cognito con MFA, autorizador JWT de API Gateway, revocación del refresh token, despliegue del stack) | `npm run test:floci` | 6 | 90 | PASS |
-| **Extremo a extremo** en Floci con el socket de Docker (gateway, autorizador con scopes, Lambdas reales con su rol IAM, DynamoDB, auditoría, revocación de sesión) | `npm run test:floci:e2e` | 1 | 12 | PASS |
-| **Navegador real** (Edge o Chrome con Playwright) contra todo el sistema en Floci, una vez sobre el build con la CSP del template y otra sobre el servidor de desarrollo de Vite: login PKCE, tokens fuera del almacenamiento web, donación y aprobación, cierre de sesión con revocación y fin de la sesión del Hosted UI (otra cuenta puede entrar después), roles, auditoría de una donación denegada, CORS, CSP, aviso con certificado no confiable | `npm run test:browser` | 1 | 30 | PASS |
+| Unitarias (sin base de datos) | `npm run test` | 8 | 62 | PASS |
+| Integración (DynamoDB Local) | `npm run test:integration` | 12 | 62 | PASS |
+| Infraestructura (`infra/template.yaml`, etapas `academic` y `production`) | `npm run test:infra` | 13 | 197 | PASS |
+| Emulador Floci con IAM y TLS activos, sin socket de Docker (políticas IAM del template, Cognito con MFA, autorizador JWT de API Gateway, revocación del refresh token, despliegue del stack) | `npm run test:floci` | 7 | 101 | PASS |
+| **Extremo a extremo** en Floci con el socket de Docker (gateway, autorizador con scopes, Lambdas reales con su rol IAM, DynamoDB, auditoría, revocación de sesión) | `npm run test:floci:e2e` | 1 | 13 | PASS |
+| **Navegador real** (Edge o Chrome con Playwright) contra todo el sistema en Floci, una vez sobre el build con la CSP del template y otra sobre el servidor de desarrollo de Vite: login PKCE, tokens fuera del almacenamiento web, donación y aprobación, cierre de sesión con revocación y fin de la sesión del Hosted UI (otra cuenta puede entrar después), roles, auditoría de una donación denegada, CORS, CSP, aviso con certificado no confiable | `npm run test:browser` | 1 | 34 | PASS |
 | `cfn-lint` sobre `infra/template.yaml` | `cfn-lint` | — | — | PASS (sin hallazgos) |
 | `checkov` (omisiones justificadas en `.checkov.yaml`) | `checkov --config-file .checkov.yaml` | — | 38 verificaciones | PASS |
 | ESLint (complejidad ≤ 10, función ≤ 50 líneas, sin `any`) | `npm run lint` | — | — | 0 errores; 16 advertencias en el frontend (ver `specs/002-zta-hardening/followups.md`) |

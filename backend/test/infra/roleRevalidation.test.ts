@@ -5,6 +5,7 @@ import {
   lambdaFunctions,
   loadTemplate,
   policiesOf,
+  propertiesOf,
   type Json,
   type JsonObject,
 } from "./helpers/loadTemplate.js";
@@ -59,9 +60,17 @@ describe.each(STAGES)("role revalidation permissions in stage %s", (stage) => {
     }
   });
 
-  it("tells every function which pool to ask", () => {
-    const environment = ((template.globals.Function as JsonObject).Environment as JsonObject).Variables as JsonObject;
+  it("tells the sensitive functions which pool to ask, and no other function", () => {
+    const pool = (definition: JsonObject) =>
+      ((propertiesOf(definition).Environment as JsonObject | undefined)?.Variables as JsonObject | undefined)
+        ?.COGNITO_USER_POOL_ID;
+    const globals = ((template.globals.Function as JsonObject).Environment as JsonObject).Variables as JsonObject;
 
-    expect(environment.COGNITO_USER_POOL_ID).toEqual({ Ref: "CognitoUserPool" });
+    // Not global: a function that the pool names as its trigger cannot reference the pool (circular dependency).
+    expect(globals.COGNITO_USER_POOL_ID).toBeUndefined();
+    for (const [, definition] of functions) {
+      const sensitive = SENSITIVE_HANDLERS.includes(handlerOf(definition));
+      expect(pool(definition)).toEqual(sensitive ? { Ref: "CognitoUserPool" } : undefined);
+    }
   });
 });
