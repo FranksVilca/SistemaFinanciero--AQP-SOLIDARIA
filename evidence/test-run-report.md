@@ -11,7 +11,7 @@
 
 | Suite | Comando | Archivos | Pruebas | Resultado |
 |---|---|---|---|---|
-| Unitarias (sin base de datos) | `npm run test` | 6 | 52 | PASS |
+| Unitarias (sin base de datos) | `npm run test` | 7 | 55 | PASS |
 | Integración (DynamoDB Local) | `npm run test:integration` | 11 | 56 | PASS |
 | Infraestructura (`infra/template.yaml`, etapas `academic` y `production`) | `npm run test:infra` | 12 | 179 | PASS |
 | Emulador Floci con IAM y TLS activos, sin socket de Docker (políticas IAM del template, Cognito con MFA, autorizador JWT de API Gateway, revocación del refresh token, despliegue del stack) | `npm run test:floci` | 6 | 90 | PASS |

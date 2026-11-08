@@ -14,5 +14,6 @@ const runtimeDependencies = Object.fromEntries(
 mkdirSync(resolve(backendRoot, "dist"), { recursive: true });
 writeFileSync(
   resolve(backendRoot, "dist/package.json"),
-  `${JSON.stringify({ name: "aqp-solidaria-functions", private: true, type: "module", dependencies: runtimeDependencies }, null, 2)}\n`
+  // `sam build` packs this folder with `npm pack`, which rejects a package without name and version.
+  `${JSON.stringify({ name: "aqp-solidaria-functions", version: "1.0.0", private: true, type: "module", dependencies: runtimeDependencies }, null, 2)}\n`
 );
