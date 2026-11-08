@@ -132,19 +132,46 @@ anterior de la plantilla, redespliéguelo antes: el script lee el bucket y la di
 ### Despliegue automático desde GitHub (opcional)
 
 El primer despliegue se hace a mano (arriba). Después, cada cambio en `main` puede desplegarse solo, **si** las pruebas
-pasan y el repositorio tiene estas dos variables (Settings, Secrets and variables, Actions, pestaña Variables; no son
-secretos):
+pasan y la cuenta de AWS tiene la identidad del CI. Esa identidad no usa claves guardadas: GitHub asume un rol por OIDC.
 
-| Variable | Qué es |
+**1. Una sola vez por cuenta, una persona administradora crea esa identidad** (plantilla aparte, `infra/bootstrap/github-oidc.yaml`):
+
+```bash
+aws cloudformation deploy --template-file infra/bootstrap/github-oidc.yaml \
+  --stack-name aqp-solidaria-github-oidc --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides GitHubRepository=<propietario>/<repositorio>
+aws cloudformation describe-stacks --stack-name aqp-solidaria-github-oidc --query "Stacks[0].Outputs" --output table
+```
+
+Si la cuenta ya tiene el proveedor `token.actions.githubusercontent.com`, agregue `CreateOidcProvider=false`. Escriba el
+repositorio con las mismas mayúsculas que en GitHub: la comparación distingue mayúsculas.
+
+**2. Tres variables del repositorio** (Settings, Secrets and variables, Actions, pestaña Variables; no son secretos):
+
+| Variable | Valor |
 |---|---|
-| `AWS_DEPLOY_ROLE_ARN` | El rol que GitHub asume por OIDC, sin claves guardadas (ver `docs/free-plan-guide.md`) |
-| `COGNITO_DOMAIN_PREFIX` | El prefijo de Cognito de **tu** despliegue (el mismo que usaste en `sam deploy --guided`) |
+| `AWS_DEPLOY_ROLE_ARN` | Salida `GitHubDeployRoleArn` del paso anterior |
+| `AWS_CLOUDFORMATION_ROLE_ARN` | Salida `CloudFormationExecutionRoleArn` |
+| `COGNITO_DOMAIN_PREFIX` | El prefijo de Cognito de **su** despliegue (el de `sam deploy --guided`) |
 
-Sin las dos, el trabajo de despliegue se omite y el resto del pipeline corre igual. El prefijo es obligatorio porque es
+Sin las tres, el trabajo de despliegue se omite y el resto del pipeline corre igual. El prefijo es obligatorio porque es
 único en todo AWS: con el valor por defecto el pipeline reemplazaría el dominio de Cognito de un stack ya desplegado y
-rompería el inicio de sesión. Las demás opciones (CloudTrail, GuardDuty, Security Hub, PITR) se despliegan apagadas; si
-las activaste a mano, cámbialas en el paso de `sam deploy` de `.github/workflows/ci.yml`. Tras desplegar, el mismo
-trabajo publica el frontend con el script del paso 3.
+rompería el inicio de sesión. Tras desplegar, el mismo trabajo publica el frontend con el script del paso 3.
+
+**Cómo está acotado.** GitHub solo puede asumir el rol desde la rama `main` de este repositorio, y ese rol solo puede
+manejar el stack con conjuntos de cambios, subir los artefactos y publicar el frontend; no crea nada por sí mismo. Los
+permisos para crear los recursos los tiene un segundo rol que únicamente CloudFormation puede usar, limitado a los
+nombres de la aplicación (`aqp-solidaria-academic-*`), que no incluyen a los dos roles del CI.
+
+**Lo que debe saber.**
+
+- Quien pueda subir a `main` controla lo que CloudFormation crea en ese espacio de nombres, incluidos roles de función
+  con cualquier permiso. Proteja `main` en GitHub con revisión obligatoria de pull requests.
+- GuardDuty y Security Hub no están cubiertos: si se activan con sus parámetros, el despliegue falla con `AccessDenied`
+  hasta que se agreguen sus permisos en la plantilla de arranque. La etapa `production` no se despliega desde el CI.
+- La lista de permisos sale de los esquemas oficiales de cada tipo de recurso y no se ha podido ejecutar en una cuenta
+  real. Si el primer despliegue del CI falla con `AccessDenied`, el mensaje nombra la acción: se agrega al rol de
+  ejecución y se vuelve a desplegar la plantilla de arranque.
 
 ## 5. Procedimiento de Limpieza Total (Teardown)
 

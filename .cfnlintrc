@@ -1,2 +1,3 @@
 templates:
   - infra/template.yaml
+  - infra/bootstrap/github-oidc.yaml

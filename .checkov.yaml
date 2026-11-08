@@ -5,6 +5,7 @@ framework:
   - cloudformation
 file:
   - infra/template.yaml
+  - infra/bootstrap/github-oidc.yaml
 compact: true
 quiet: true
 skip-check:

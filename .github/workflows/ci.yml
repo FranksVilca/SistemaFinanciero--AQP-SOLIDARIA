@@ -177,7 +177,7 @@ jobs:
     needs: [lint-format, typecheck, unit, integration, infra-tests, emulator, iac-scan, dependency-audit]
     if: >-
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      vars.AWS_DEPLOY_ROLE_ARN != '' && vars.COGNITO_DOMAIN_PREFIX != ''
+      vars.AWS_DEPLOY_ROLE_ARN != '' && vars.AWS_CLOUDFORMATION_ROLE_ARN != '' && vars.COGNITO_DOMAIN_PREFIX != ''
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -200,6 +200,7 @@ jobs:
           sam deploy
           --stack-name aqp-solidaria-academic
           --capabilities CAPABILITY_IAM
+          --role-arn ${{ vars.AWS_CLOUDFORMATION_ROLE_ARN }}
           --resolve-s3
           --no-confirm-changeset
           --no-fail-on-empty-changeset

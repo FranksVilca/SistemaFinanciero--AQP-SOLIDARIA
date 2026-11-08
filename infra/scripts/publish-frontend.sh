@@ -12,6 +12,11 @@
 # DISTRIBUTION_ID to use instead of the stack outputs (for a stack deployed before those outputs existed).
 set -euo pipefail
 
+# Git Bash on Windows rewrites every argument that starts with "/" as a Windows path ("/index.html" becomes
+# "C:/Program Files/Git/index.html"), and CloudFront then rejects the invalidation paths. This turns that off; it has no
+# effect anywhere else.
+export MSYS_NO_PATHCONV=1
+
 STACK_NAME="${STACK_NAME:-aqp-solidaria-academic}"
 REGION="${AWS_REGION:-us-east-1}"
 DRY_RUN=""

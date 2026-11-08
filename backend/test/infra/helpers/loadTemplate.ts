@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { parse, type CollectionItem, type ScalarTag, type YAMLMap, type YAMLSeq } from "yaml";
 
 const TEMPLATE_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../infra/template.yaml");
+const BOOTSTRAP_PATH = resolve(dirname(TEMPLATE_PATH), "bootstrap/github-oidc.yaml");
 
 export const STAGES = ["academic", "production"] as const;
 export type Stage = (typeof STAGES)[number];
@@ -48,9 +49,18 @@ const customTags = SHORT_TAGS.flatMap((name) => {
   return [scalar, sequence, map];
 });
 
-function parseTemplateFile(): JsonObject {
-  const source = readFileSync(TEMPLATE_PATH, "utf8");
+function parseYamlFile(path: string): JsonObject {
+  const source = readFileSync(path, "utf8");
   return parse(source, { customTags: customTags as never }) as JsonObject;
+}
+
+function parseTemplateFile(): JsonObject {
+  return parseYamlFile(TEMPLATE_PATH);
+}
+
+/** infra/bootstrap/github-oidc.yaml as written: the identity of the CI, deployed once by an administrator. */
+export function rawBootstrapTemplate(): JsonObject {
+  return parseYamlFile(BOOTSTRAP_PATH);
 }
 
 /** infra/template.yaml as written, with no Condition or Fn::If resolved: what SAM receives before it translates it. */
