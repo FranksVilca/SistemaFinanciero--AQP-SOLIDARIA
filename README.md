@@ -83,6 +83,9 @@ npm run test:floci
 # Extremo a extremo con las Lambdas reales en contenedores (monta el socket de Docker: solo en una máquina tuya)
 docker compose -f backend/test/floci/docker-compose.lambda.yml up -d
 npm run test:floci:e2e
+
+# El SPA en un navegador real (Edge o Chrome) contra todo el sistema en Floci; antes ejecute `npm run local:stop` si tiene `npm run local` corriendo
+npm run test:browser
 ```
 
 El mapeo de cada principio de NIST SP 800-207 a su evidencia está en [docs/nist-800-207-mapping.md](docs/nist-800-207-mapping.md).

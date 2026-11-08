@@ -34,6 +34,10 @@ El login habla con el emulador por `https://localhost:4566`, con un certificado 
 
 La CA exportada queda en `.local/floci-root-ca.crt`.
 
+> **La página de login no tiene estilos en local.** La genera el emulador (un formulario HTML básico) y no soporta
+> la personalización de Cognito. La plantilla define la marca del Hosted UI clásico (`CognitoHostedUiBranding`), que
+> solo se verá al desplegar en AWS real.
+
 Recorrido sugerido: entra como donante, dona S/ 50 a un proyecto, ve "Mis Donaciones", pulsa "Simular Aprobación" y
 sal; luego entra como auditor y revisa el registro (actores seudonimizados `usr_…`).
 

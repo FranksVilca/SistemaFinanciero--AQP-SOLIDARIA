@@ -1,7 +1,7 @@
 # Reporte de Evidencia de Ejecución de Pruebas (T01 - T14)
 
 **Curso:** Tópicos Avanzados en Ingeniería de Software — EPIS, UNSA  
-**Fecha:** 2026-11-08 (reemplaza el reporte del 2026-11-06, que se apoyaba en pruebas con DynamoDB simulado)  
+**Fecha:** 2026-11-09 (reemplaza el reporte del 2026-11-06, que se apoyaba en pruebas con DynamoDB simulado)  
 **Framework de pruebas:** Vitest 3.2.7 en Node.js v24  
 **Base de datos de las pruebas de integración:** DynamoDB Local (`amazon/dynamodb-local`)
 
@@ -11,11 +11,12 @@
 
 | Suite | Comando | Archivos | Pruebas | Resultado |
 |---|---|---|---|---|
-| Unitarias (sin base de datos) | `npm run test` | 4 | 33 | PASS |
-| Integración (DynamoDB Local) | `npm run test:integration` | 10 | 40 | PASS |
-| Infraestructura (`infra/template.yaml`, etapas `academic` y `production`) | `npm run test:infra` | 10 | 163 | PASS |
+| Unitarias (sin base de datos) | `npm run test` | 6 | 45 | PASS |
+| Integración (DynamoDB Local) | `npm run test:integration` | 10 | 42 | PASS |
+| Infraestructura (`infra/template.yaml`, etapas `academic` y `production`) | `npm run test:infra` | 11 | 173 | PASS |
 | Emulador Floci con IAM y TLS activos, sin socket de Docker (políticas IAM del template, Cognito con MFA, autorizador JWT de API Gateway, revocación del refresh token, despliegue del stack) | `npm run test:floci` | 5 | 78 | PASS |
 | **Extremo a extremo** en Floci con el socket de Docker (gateway, autorizador con scopes, Lambdas reales con su rol IAM, DynamoDB, auditoría, revocación de sesión) | `npm run test:floci:e2e` | 1 | 11 | PASS |
+| **Navegador real** (Edge o Chrome con Playwright) contra todo el sistema en Floci, una vez sobre el build con la CSP del template y otra sobre el servidor de desarrollo de Vite: login PKCE, tokens fuera del almacenamiento web, donación y aprobación, cierre de sesión con revocación y fin de la sesión del Hosted UI (otra cuenta puede entrar después), roles, auditoría de una donación denegada, CORS, CSP, aviso con certificado no confiable | `npm run test:browser` | 1 | 30 | PASS |
 | `cfn-lint` sobre `infra/template.yaml` | `cfn-lint` | — | — | PASS (sin hallazgos) |
 | `checkov` (omisiones justificadas en `.checkov.yaml`) | `checkov --config-file .checkov.yaml` | — | 38 verificaciones | PASS |
 | ESLint (complejidad ≤ 10, función ≤ 50 líneas, sin `any`) | `npm run lint` | — | — | 0 errores; 16 advertencias en el frontend (ver `specs/002-zta-hardening/followups.md`) |
@@ -50,7 +51,7 @@ Por qué cambió la suite: las 37 pruebas anteriores simulaban DynamoDB y no det
 
 Con el emulador (Floci con IAM, TLS y el socket de Docker) se demostró casi todo el camino sin cuenta de AWS: IAM aplicado, Cognito con MFA obligatorio, el autorizador JWT con scopes y token vencido, las Lambdas reales con su rol, la auditoría y la revocación de sesión y de refresh token (ver los niveles de prueba en [docs/nist-800-207-mapping.md](../docs/nist-800-207-mapping.md)). Lo que queda, con el motivo:
 
-1. **Hosted UI de Cognito en un navegador real** (las páginas de inicio de sesión y de enrolamiento del TOTP). El emulador sirve un formulario simplificado, no la interfaz de Cognito. Que la política de seguridad de contenido deje pasar al SPA se comprueba de forma estática (`backend/test/infra/networkSecurity.test.ts`), no en un navegador.
+1. **Hosted UI de Cognito real** (las páginas de inicio de sesión y de enrolamiento del TOTP, y su aspecto con la personalización CSS de la plantilla, `CognitoHostedUiBranding`). El emulador sirve un formulario simplificado sin estilos y no soporta `SetUICustomization`. El recorrido del SPA en un navegador real (login, cierre de sesión, CSP y CORS) **ya está demostrado contra el emulador** con `npm run test:browser`; lo que queda es el dominio real de Cognito, que incluye comprobar que acepta el CSS de la plantilla.
 2. **`DeletionProtectionEnabled` y PITR en `production`.** Floci implementa la protección de borrado por la API de DynamoDB, pero su CloudFormation ignora esas dos propiedades al crear las tablas; solo se verifican en el template con `backend/test/infra/dataProtection.test.ts`. La etapa `production` se despliega en Floci sin la función de simulación (lo que esa etapa produce) porque la comprobación estática de Floci rechaza las ramas `Fn::If` del template completo; CloudFormation real las acepta.
 3. **Una pasada de confirmación en AWS real.** Toda la evidencia anterior supone que el emulador se comporta como AWS; Floci no es AWS (por ejemplo firma los tokens con otro emisor y no copia los scopes de las rutas SAM, y las pruebas lo corrigen). Basta una ejecución de `specs/002-zta-hardening/quickstart.md`, sección 4, para confirmar el paralelismo.
 4. **`AccessDenied` real de IAM** (T10): el emulador ya lo demostró; la confirmación es opcional.

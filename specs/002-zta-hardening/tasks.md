@@ -387,11 +387,31 @@ Task: "Wrap backend/src/projects/publishProject.ts"
 
 Tras Foundational: A → US1 + US2; B → US3 (luego US4 y US9); C → US7 (T051–T053) y documentación US10. Quien edite `infra/template.yaml` sigue el orden recomendado.
 
+
+---
+
+## Phase 15: Frontend local y pruebas en navegador
+
+**Purpose**: poder ver y probar el sistema completo sin AWS, y cubrir con pruebas lo que se descubrió al usarlo a mano.
+
+- [X] T090 `backend/scripts/localStack.ts` y `npm run local`: levanta Floci con IAM, TLS y el socket de Docker, despliega `infra/template.yaml`, crea tres usuarios de ejemplo y tres proyectos, escribe `frontend/.env.local` y lanza Vite; `npm run local:stop` lo desmonta; `npm run local:trust` instala el certificado del emulador en Windows; guía en `docs/ver-el-frontend.md`
+- [X] T091 `backend/test/browser/spa.test.ts` (Playwright con Edge o Chrome): 15 recorridos, cada uno sobre el build con la CSP del template y sobre el servidor de Vite; `npm run test:browser`
+- [X] T092 Corregir lo que el navegador reveló: estilos ausentes (`frontend/src/index.css`), URL de revocación al salir, doble intercambio del código de autorización con React StrictMode, CORS del emulador, caché de la app que no se invalidaba al donar ni al aprobar, UUID del proyecto que el gestor no podía ver para publicar, aviso visible cuando el login no puede contactar al proveedor de identidad
+- [X] T093 Cerrar la sesión del Hosted UI al salir (`frontend/src/auth/revocation.ts`, `logoutUrlOf`): sin esto otra persona entraba como la anterior sin credenciales; prueba unitaria `backend/test/auth/logoutUrl.test.ts` y recorrido de dos cuentas en el navegador
+- [X] T094 Auditoría de una donación denegada con el proyecto afectado (`backend/src/audit/resourceRef.ts`: el identificador del cuerpo solo entra si es un UUID); `backend/test/audit/resourceRef.test.ts` y `backend/test/integration/audit.test.ts`
+- [X] T095 No ofrecer el botón de donar a quien no es DONANTE (`frontend/src/pages/ProjectDetailPage.tsx`); la API sigue siendo la que decide
+- [X] T096 `deleteStack` de las pruebas de Floci espera a que termine el borrado, y `bootLocalStack` falla con un mensaje claro si ya hay otro stack (la plantilla usa nombres fijos)
+- [X] T097 Personalización del Hosted UI clásico por CSS (`CognitoHostedUiBranding` y `ManagedLoginVersion: 1` en `infra/template.yaml`) con `backend/test/infra/hostedUi.test.ts`, que exige solo las clases y propiedades que Cognito acepta
+- [X] T098 Etapa `browser` en `.github/workflows/ci.yml`, sin bloquear el despliegue hasta verla pasar en un runner
+- [X] T099 `.local/` en `.gitignore` (certificado y registros que genera `npm run local`)
+- [ ] T100 Decidir la política para un usuario con más de un rol (por ejemplo AUDITOR y DONANTE: hoy el sistema lo permite y un auditor podría auditar sus propias donaciones) y, según la decisión, implementarla en `withAuth` con su prueba; ver `followups.md`
+
 ---
 
 ## Notes
 
 - [P] = archivos distintos y sin dependencias pendientes.
+- T090–T100 (fase 15) se añadieron al pedir que todo se pudiera ver y probar con un simulador, y al probar el frontend a mano.
 - Evidencia que exige AWS real (T045, T070) queda **pendiente** hasta ejecutarse; no se marca como cumplida por pruebas locales.
 - El usuario realiza los commits; las tareas no incluyen commits.
 - Evitar: tareas vagas, conflictos en `infra/template.yaml`, dependencias cruzadas que rompan la independencia de historias.

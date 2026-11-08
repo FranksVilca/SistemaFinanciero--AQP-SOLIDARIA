@@ -115,6 +115,28 @@ jobs:
           FLOCI_ENDPOINT: http://localhost:4566
           FLOCI_LAMBDA_ENDPOINT: http://172.17.0.1:4566
 
+  browser:
+    # The SPA in a real browser against the whole system in Floci: sign-in, donation, sign-out, roles, CSP and CORS, once
+    # over the production build and once over the Vite dev server. Same Docker-socket emulator as emulator-e2e, so it
+    # does not gate the deployment until it has been seen passing on a runner. Chrome comes with the runner image.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Start Floci with the Docker socket
+        run: docker compose -f backend/test/floci/docker-compose.lambda.yml up -d
+      - name: Browser tests
+        run: npm run test:browser
+        env:
+          BROWSER_CHANNEL: chrome
+          FLOCI_ENDPOINT: http://localhost:4566
+          FLOCI_LAMBDA_ENDPOINT: http://172.17.0.1:4566
+
   iac-scan:
     runs-on: ubuntu-latest
     steps:

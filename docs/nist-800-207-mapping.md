@@ -49,8 +49,9 @@ Cada principio de NIST SP 800-207 con el control que lo implementa, la evidencia
 | `backend/test/infra/networkSecurity.test.ts` | `redirect-to-https`, HSTS ≥ 180 días, CSP sin orígenes comodín que además deja pasar todo lo que pide el SPA (descubrimiento, token, revocación, API), bucket privado con política OAC y rechazo de tráfico sin TLS |
 | `backend/test/infra/telemetryAndEdge.test.ts` | CORS limitado al dominio propio (localhost solo en la etapa académica) |
 | `backend/test/floci/stackDeployment.test.ts` | El stack con la política del bucket despliega |
+| `backend/test/browser/spa.test.ts` | En un navegador real, el SPA servido con la CSP del template completa el login, las llamadas a la API y la revocación sin violaciones de CSP ni errores de consola; CORS responde al origen del SPA y bloquea otro origen |
 
-**Estado: Cumple (real pendiente)** — falta comprobar en un navegador que la CSP no bloquea el intercambio de código con el dominio de Cognito. Límite conocido: el certificado por defecto de CloudFront no permite fijar TLS 1.2 como mínimo (`.checkov.yaml`).
+**Estado: Cumple (real pendiente)** — la CSP y el CORS se comprobaron en un navegador contra el emulador; falta hacerlo contra el dominio real de Cognito. Límite conocido: el certificado por defecto de CloudFront no permite fijar TLS 1.2 como mínimo (`.checkov.yaml`).
 
 ## Principio 3 — Acceso por sesión y por recurso
 
@@ -65,6 +66,7 @@ Cada principio de NIST SP 800-207 con el control que lo implementa, la evidencia
 | `backend/test/floci/refreshRevocation.test.ts` | Revocar el refresh token en el endpoint que el SPA deriva del descubrimiento deja inservibles el refresh y el access token |
 | `backend/test/floci/e2e/fullStack.test.ts` | De extremo a extremo con las Lambdas reales: una sesión revocada recibe 401 en una acción sensible con su token todavía vigente |
 | `backend/test/infra/mfa.test.ts` | Tokens de acceso e identidad de 15 minutos como máximo |
+| `backend/test/browser/spa.test.ts` | Los tokens no llegan a `localStorage` ni `sessionStorage`; al salir se revoca el refresh token **y se cierra la sesión del Hosted UI** (sin eso, la siguiente persona que usara el navegador entraba como la anterior sin credenciales); un rol no ve las pantallas ni los botones de otro y la API rechaza el intento forzado y lo audita con el proyecto afectado |
 
 **Estado: Cumple (real pendiente)** — todo lo anterior está demostrado en el emulador; solo falta la pasada de confirmación en AWS real (`evidence/test-run-report.md`, sección 3).
 
