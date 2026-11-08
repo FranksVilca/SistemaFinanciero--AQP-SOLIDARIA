@@ -72,8 +72,13 @@ export async function deployStack(
   return StackResourceSummaries;
 }
 
+/**
+ * Deletes a stack and waits until it is gone. The template names its resources, so a stack still being deleted would
+ * make the next deployment fail with "already exists".
+ */
 export async function deleteStack(stackName: string): Promise<void> {
   await cloudFormation.send(new DeleteStackCommand({ StackName: stackName }));
+  await waitFor(stackName, (status) => status === undefined || status === "DELETE_COMPLETE");
 }
 
 export const countOf = (resources: StackResourceSummary[], type: string): number =>

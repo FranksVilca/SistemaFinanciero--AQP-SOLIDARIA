@@ -1,5 +1,5 @@
 import { UserManager, WebStorageStateStore, InMemoryWebStorage, User } from "oidc-client-ts";
-import { revocationEndpointOf } from "./revocation.js";
+import { logoutUrlOf, revocationEndpointOf } from "./revocation.js";
 
 const authority =
   import.meta.env.VITE_COGNITO_AUTHORITY ||
@@ -45,6 +45,17 @@ async function revokeRefreshToken(refreshToken: string): Promise<void> {
   if (!response.ok) throw new Error(`Token revocation was refused (HTTP ${response.status})`);
 }
 
+/** Where the browser goes to end the hosted UI session too; the SPA's own address if that cannot be worked out. */
+async function hostedUiLogoutUrl(): Promise<string> {
+  try {
+    const metadata = await userManager.metadataService.getMetadata();
+    return logoutUrlOf(String(metadata.token_endpoint), clientId, postLogoutRedirectUri);
+  } catch (error) {
+    console.error("The hosted UI session could not be ended", error);
+    return postLogoutRedirectUri;
+  }
+}
+
 export async function logoutWithOidc(): Promise<void> {
   const user = await userManager.getUser();
   if (user?.refresh_token) {
@@ -55,6 +66,7 @@ export async function logoutWithOidc(): Promise<void> {
       console.error("The refresh token could not be revoked", error);
     }
   }
+  const destination = await hostedUiLogoutUrl();
   await userManager.removeUser();
-  window.location.href = postLogoutRedirectUri;
+  window.location.href = destination;
 }

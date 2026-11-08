@@ -5,10 +5,14 @@ import { projectsApi } from "../services/apiClient.js";
 import { formatPEN } from "../types/index.js";
 import { Loader2, ArrowLeft, Heart, ShieldCheck } from "lucide-react";
 import { DonationModal } from "../components/DonationModal.js";
+import { useAuth } from "../auth/AuthContext.js";
 
 export const ProjectDetailPage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
+  const { user, roles } = useAuth();
+  // Only donors donate. Someone signed in with another role is told so instead of being offered an action the API refuses.
+  const cannotDonate = Boolean(user) && !roles.includes("DONANTE");
 
   const { data: project, isLoading, error } = useQuery({
     queryKey: ["project", projectId],
@@ -95,13 +99,19 @@ export const ProjectDetailPage: React.FC = () => {
           <p className="text-xs text-slate-500">
             * Las donaciones registradas son simulaciones académicas protegidas con Zero Trust.
           </p>
-          <button
-            type="button"
-            onClick={() => setIsDonationModalOpen(true)}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-          >
-            <Heart className="w-5 h-5" /> Registrar intención de donación
-          </button>
+          {cannotDonate ? (
+            <p role="note" className="text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+              Solo las cuentas con rol DONANTE pueden registrar donaciones.
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsDonationModalOpen(true)}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+            >
+              <Heart className="w-5 h-5" /> Registrar intención de donación
+            </button>
+          )}
         </div>
       </div>
 

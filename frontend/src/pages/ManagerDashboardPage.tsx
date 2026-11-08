@@ -21,7 +21,11 @@ export const ManagerDashboardPage: React.FC = () => {
     mutationFn: (data: { title: string; description: string; goalAmountCents: number }) =>
       projectsApi.create(data, user?.access_token || ""),
     onSuccess: (newProj) => {
-      setSuccessMsg(`Proyecto "${newProj.title}" creado exitosamente en estado BORRADOR.`);
+      setSuccessMsg(
+        `Proyecto "${newProj.title}" creado exitosamente en estado BORRADOR. Identificador: ${newProj.projectId}`
+      );
+      // The id is what the publish form asks for: hand it over instead of making the manager find it.
+      setPublishId(newProj.projectId);
       setTitle("");
       setDescription("");
       setGoalSoles("5000");

@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DEMO_PASSWORD, bootLocalStack, type LocalStack } from "../floci/helpers/localStack.js";
+import { signInSettings } from "../floci/helpers/gateway.js";
+import { hostedSignIn } from "../floci/helpers/cognitoUsers.js";
 import { deleteStack } from "../floci/helpers/stack.js";
 import {
   emulatorContentSecurityPolicy,
@@ -114,7 +116,7 @@ describe.each(SITES)("SPA served as: %s", (kind) => {
       .first()
       .waitFor();
 
-    expect(await page.getByRole("link", { name: /Ver detalle y donar/ }).count()).toBe(3);
+    expect(await page.getByRole("link", { name: /Ver detalle y donar/ }).count()).toBeGreaterThanOrEqual(3);
     expect(await bodyText(page)).toContain("Iniciar Sesión");
     expect(watched.consoleErrors).toEqual([]);
     await context.close();
@@ -171,6 +173,77 @@ describe.each(SITES)("SPA served as: %s", (kind) => {
     await context.close();
   });
 
+  it("shows a new donation in the history that was opened before, and the approved amount in the catalog", async () => {
+    const { context, page, watched } = await newPage();
+    const donationCount = async (): Promise<number> => page.getByText(/^ID: /).count();
+    const raisedByFirstProject = async (): Promise<number> => {
+      await page.getByRole("link", { name: "Proyectos" }).first().click();
+      await page
+        .getByRole("link", { name: /Ver detalle y donar/ })
+        .first()
+        .waitFor();
+      const raised = (await bodyText(page)).match(/Recaudado: S\/\s*([\d,.]+)/)?.[1] ?? "";
+      return Number(raised.replace(/,/g, ""));
+    };
+    await signIn(page, "donante@aqpsolidaria.pe");
+
+    // Open the history first, so it is in the cache before the donation exists.
+    await page.getByRole("link", { name: "Mis Donaciones" }).click();
+    await page.getByRole("heading", { name: /Mi Historial de Donaciones/ }).waitFor();
+    await page.waitForLoadState("networkidle");
+    const donationsBefore = await donationCount();
+    const raisedBefore = await raisedByFirstProject();
+
+    await page
+      .getByRole("link", { name: /Ver detalle y donar/ })
+      .first()
+      .click();
+    await page.getByRole("button", { name: /Registrar intención de donación/ }).click();
+    await page.fill("#amount", "50");
+    await page.getByRole("button", { name: /Confirmar Intención/ }).click();
+    await page.getByText("Simular Aprobación").first().waitFor(); // the success message says what to do next
+    await page.getByRole("button", { name: "Aceptar" }).click();
+
+    await page.getByRole("link", { name: "Mis Donaciones" }).click();
+    await expect.poll(donationCount, { timeout: 15_000 }).toBe(donationsBefore + 1);
+
+    await page
+      .getByRole("button", { name: /Simular Aprobación/ })
+      .first()
+      .click();
+    await page.getByText("CONFIRMADA_SIMULADA").first().waitFor();
+
+    // The catalog had the old amount cached: it must show the approved donation without a reload.
+    await expect.poll(raisedByFirstProject, { timeout: 15_000 }).toBe(raisedBefore + 50);
+    expect(watched.consoleErrors).toEqual([]);
+    await context.close();
+  });
+
+  it("ends the hosted UI session at sign-out, so the next sign-in asks for credentials and can be another account", async () => {
+    // One browser context throughout: the hosted UI remembers the person in a cookie, as it does for a real user.
+    const { context, page, watched } = await newPage();
+    await signIn(page, "auditor@aqpsolidaria.pe");
+    expect(await bodyText(page)).toContain("AUDITOR");
+
+    await page.getByRole("button", { name: /Salir/ }).click();
+    await page.getByRole("button", { name: /Iniciar Sesión/ }).waitFor();
+    await page.getByRole("button", { name: /Iniciar Sesión/ }).click();
+
+    // Not straight back in as the auditor: the sign-in form is shown again.
+    await page.waitForURL(/cognito-idp\/login/);
+    await page.fill("#username", "donante@aqpsolidaria.pe");
+    await page.fill('input[name="password"]', DEMO_PASSWORD);
+    await Promise.all([page.waitForURL(`${SITE}/`), page.locator('button[type="submit"]').click()]);
+    await page.getByText("donante@aqpsolidaria.pe").waitFor();
+
+    const text = await bodyText(page);
+    expect(text).toContain("DONANTE");
+    expect(text).not.toContain("AUDITOR");
+    expect(text).not.toContain("auditor@aqpsolidaria.pe");
+    expect(watched.consoleErrors).toEqual([]);
+    await context.close();
+  });
+
   it("does not reveal the reserved pages to a donor", async () => {
     const { context, page } = await newPage();
     await signIn(page, "donante@aqpsolidaria.pe");
@@ -212,6 +285,112 @@ describe.each(SITES)("SPA served as: %s", (kind) => {
     expect(text).not.toContain("donante@aqpsolidaria.pe");
     expect(watched.consoleErrors).toEqual([]);
     await context.close();
+  });
+
+  it("sends an anonymous visitor who tries to donate to the sign-in page", async () => {
+    const { context, page } = await newPage();
+    await page.goto(`${SITE}/`, { waitUntil: "networkidle" });
+    await page
+      .getByRole("link", { name: /Ver detalle y donar/ })
+      .first()
+      .click();
+
+    await page.getByRole("button", { name: /Registrar intención de donación/ }).click();
+    await page.getByText("Debes iniciar sesión").waitFor();
+    await page.getByRole("button", { name: /Iniciar sesión con Cognito/ }).click();
+
+    await page.waitForURL(/cognito-idp\/login/);
+    await context.close();
+  });
+
+  it("keeps the person on the sign-in page when the password is wrong", async () => {
+    const { context, page } = await newPage();
+    await page.goto(`${SITE}/`, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: /Iniciar Sesión/ }).click();
+    await page.waitForURL(/cognito-idp\/login/);
+
+    await page.fill("#username", "donante@aqpsolidaria.pe");
+    await page.fill('input[name="password"]', "NotThePassword1!");
+    await page.locator('button[type="submit"]').click();
+    await page.waitForLoadState("networkidle");
+
+    expect(page.url()).toMatch(/cognito-idp\/login/);
+    expect(page.url()).not.toContain(SITE);
+    await context.close();
+  });
+
+  it.each(["auditor@aqpsolidaria.pe", "gestor@aqpsolidaria.pe"])(
+    "does not offer %s the donation button, and the API refuses and audits a forced attempt",
+    async (email) => {
+      const { context, page, watched } = await newPage();
+      const projects = (await (await fetch(`${stack.baseUrl}/v1/projects`)).json()) as Array<{ projectId: string }>;
+      const projectId = projects[0].projectId;
+
+      await signIn(page, email);
+      await page
+        .getByRole("link", { name: /Ver detalle y donar/ })
+        .first()
+        .click();
+      await page.getByRole("note").filter({ hasText: "rol DONANTE" }).waitFor();
+      expect(await page.getByRole("button", { name: /Registrar intención de donación/ }).count()).toBe(0);
+
+      // What a hand-made request does: the role check refuses it in the API whatever the page shows.
+      const { scopes, redirectUri } = signInSettings();
+      const tokens = await hostedSignIn(stack.pool, email, scopes, redirectUri);
+      const forced = await fetch(`${stack.baseUrl}/v1/donations`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${tokens.accessToken}`,
+          "Idempotency-Key": crypto.randomUUID(),
+        },
+        body: JSON.stringify({ projectId, amountCents: 5_000 }),
+      });
+      expect(forced.status).toBe(403);
+      expect(watched.consoleErrors).toEqual([]);
+      await context.close();
+
+      const auditor = await newPage();
+      await signIn(auditor.page, "auditor@aqpsolidaria.pe");
+      await auditor.page.getByRole("link", { name: /Auditoría/ }).click();
+      await auditor.page.getByText(`project:${projectId}`).first().waitFor({ timeout: 30_000 });
+      const row = auditor.page.locator("tr", { hasText: `project:${projectId}` }).filter({ hasText: "DENIED" });
+      expect(await row.count()).toBeGreaterThan(0);
+      expect(await row.first().innerText()).toContain("CreateDonation");
+      await auditor.context.close();
+    }
+  );
+
+  it("lets the manager create a project, see its identifier, publish it and see it in the public catalog", async () => {
+    const { context, page, watched } = await newPage();
+    const title = `Comedor de prueba (${kind})`;
+    await signIn(page, "gestor@aqpsolidaria.pe");
+    await page.getByRole("link", { name: /Gestión Proyectos/ }).click();
+
+    await page.fill("#proj-title", title);
+    await page.fill("#proj-desc", "Un comedor para la comunidad, creado desde la prueba de navegador.");
+    await page.fill("#proj-goal", "300");
+    await page.getByRole("button", { name: /Guardar Proyecto como BORRADOR/ }).click();
+    const created = await page.getByText(/Identificador: [0-9a-f-]{36}/).innerText();
+    const projectId = /([0-9a-f-]{36})/.exec(created)?.[1];
+    expect(projectId).toBeDefined();
+    expect(await page.inputValue("#pub-id")).toBe(projectId);
+
+    // A draft is not public yet.
+    const draftCatalog = (await (await fetch(`${stack.baseUrl}/v1/projects`)).json()) as Array<{ title: string }>;
+    expect(draftCatalog.map((project) => project.title)).not.toContain(title);
+
+    await page.getByRole("button", { name: /Publicar en el Catálogo Público/ }).click();
+    await page.getByText(/publicado con éxito/).waitFor();
+    const published = (await (await fetch(`${stack.baseUrl}/v1/projects`)).json()) as Array<{ title: string }>;
+    expect(published.map((project) => project.title)).toContain(title);
+    expect(watched.consoleErrors).toEqual([]);
+    await context.close();
+
+    const visitor = await newPage();
+    await visitor.page.goto(`${SITE}/`, { waitUntil: "networkidle" });
+    await visitor.page.getByText(title).waitFor();
+    await visitor.context.close();
   });
 
   it("tells the person when the identity provider cannot be reached (certificate not trusted)", async () => {

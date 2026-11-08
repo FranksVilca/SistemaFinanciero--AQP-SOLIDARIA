@@ -53,6 +53,32 @@ describe("audit trail", () => {
     expect(event).toMatchObject({ outcome: "DENIED", reason: "UNAUTHENTICATED", actorRef: "anonymous" });
   });
 
+  it.each(["AUDITOR", "GESTOR"] as const)(
+    "records which project a %s tried to donate to when the role is denied",
+    async (role) => {
+      const project = await seedProject();
+      const identity = identityFor(role);
+
+      const response = await createDonation(
+        buildEvent({
+          identity,
+          headers: { "Idempotency-Key": randomUUID() },
+          body: { projectId: String(project.projectId), amountCents: 5_000 },
+        })
+      );
+      const [event] = await readAllAuditEvents();
+
+      expect(response.statusCode).toBe(403);
+      expect(event).toMatchObject({
+        outcome: "DENIED",
+        reason: "ROLE",
+        action: "CreateDonation",
+        resourceRef: `project:${project.projectId}`,
+        actorRef: pseudonymizeActor(identity.sub),
+      });
+    }
+  );
+
   it("records the success of a state-changing action with the created resource", async () => {
     const manager = identityFor("GESTOR");
 
