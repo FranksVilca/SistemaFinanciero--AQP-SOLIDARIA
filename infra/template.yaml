@@ -346,6 +346,29 @@ Resources:
     Properties:
       Domain: !Ref CognitoDomainPrefix
       UserPoolId: !Ref CognitoUserPool
+      # Hosted UI (classic): the branding below (CSS) applies only to it, and it is available in every Cognito feature
+      # plan. The newer managed login (version 2) needs the Essentials or Plus plan, which is not the free plan.
+      ManagedLoginVersion: 1
+
+  # Brand of the Cognito hosted sign-in page (classic hosted UI), in the colours of the SPA. Cognito accepts only a
+  # fixed list of class names and properties and rejects the rest at deploy time, which test/infra/hostedUi.test.ts
+  # checks. CloudFormation cannot upload the logo (only the console or the API can), so the page has a coloured banner.
+  CognitoHostedUiBranding:
+    Type: AWS::Cognito::UserPoolUICustomizationAttachment
+    DependsOn: CognitoUserPoolDomain
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      ClientId: ALL
+      CSS: |
+        .background-customizable { background-color: #f8fafc; }
+        .banner-customizable { background-color: #4f46e5; padding: 24px 0px 24px 0px; }
+        .label-customizable { font-weight: 600; color: #334155; }
+        .textDescription-customizable { color: #334155; font-size: 15px; padding-top: 10px; padding-bottom: 10px; display: block; }
+        .inputField-customizable { width: 100%; height: 40px; color: #0f172a; background-color: #ffffff; border: 1px solid #cbd5e1; }
+        .inputField-customizable:focus { border-color: #4f46e5; }
+        .submitButton-customizable { font-size: 14px; font-weight: bold; margin: 20px 0px 10px 0px; height: 44px; width: 100%; color: #ffffff; background-color: #4f46e5; }
+        .submitButton-customizable:hover { color: #ffffff; background-color: #4338ca; }
+        .errorMessage-customizable { padding: 10px; font-size: 14px; width: 100%; background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
 
   CognitoResourceServer:
     Type: AWS::Cognito::UserPoolResourceServer
