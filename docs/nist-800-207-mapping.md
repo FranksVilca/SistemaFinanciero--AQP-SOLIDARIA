@@ -49,6 +49,7 @@ Cada principio de NIST SP 800-207 con el control que lo implementa, la evidencia
 | `backend/test/infra/networkSecurity.test.ts` | `redirect-to-https`, HSTS ≥ 180 días, CSP sin orígenes comodín que además deja pasar todo lo que pide el SPA (descubrimiento, token, revocación, API), bucket privado con política OAC y rechazo de tráfico sin TLS |
 | `backend/test/infra/telemetryAndEdge.test.ts` | CORS limitado al dominio propio (localhost solo en la etapa académica) |
 | `backend/test/floci/stackDeployment.test.ts` | El stack con la política del bucket despliega |
+| `backend/test/infra/corsAsSamReadsIt.test.ts`, `infra/scripts/check_sam_cors.py` (CI) | El CORS llega a API Gateway como SAM lo traduce: lista simple de orígenes, solo CloudFront (y localhost en la etapa académica), sin comodín. Un `!If` que envolvía toda la lista hacía que SAM escribiera un CORS inválido que API Gateway ignoraba y el API desplegado no respondía al preflight; el script falla con esa plantilla |
 | `backend/test/browser/spa.test.ts` | En un navegador real, el SPA servido con la CSP del template completa el login, las llamadas a la API y la revocación sin violaciones de CSP ni errores de consola; CORS responde al origen del SPA y bloquea otro origen |
 
 **Estado: Cumple (real pendiente)** — la CSP y el CORS se comprobaron en un navegador contra el emulador; falta hacerlo contra el dominio real de Cognito. Límite conocido: el certificado por defecto de CloudFront no permite fijar TLS 1.2 como mínimo (`.checkov.yaml`).

@@ -130,6 +130,23 @@ aws s3 sync dist/ s3://<FrontendBucketName>/ --delete
 
 ---
 
+### Despliegue automático desde GitHub (opcional)
+
+El primer despliegue se hace a mano (arriba). Después, cada cambio en `main` puede desplegarse solo, **si** las pruebas
+pasan y el repositorio tiene estas dos variables (Settings, Secrets and variables, Actions, pestaña Variables; no son
+secretos):
+
+| Variable | Qué es |
+|---|---|
+| `AWS_DEPLOY_ROLE_ARN` | El rol que GitHub asume por OIDC, sin claves guardadas (ver `docs/free-plan-guide.md`) |
+| `COGNITO_DOMAIN_PREFIX` | El prefijo de Cognito de **tu** despliegue (el mismo que usaste en `sam deploy --guided`) |
+
+Sin las dos, el trabajo de despliegue se omite y el resto del pipeline corre igual. El prefijo es obligatorio porque es
+único en todo AWS: con el valor por defecto el pipeline reemplazaría el dominio de Cognito de un stack ya desplegado y
+rompería el inicio de sesión. Las demás opciones (CloudTrail, GuardDuty, Security Hub, PITR) se despliegan apagadas; si
+las activaste a mano, cámbialas en el paso de `sam deploy` de `.github/workflows/ci.yml`. Este trabajo despliega el
+backend; el frontend se sigue publicando como en el paso 3.
+
 ## 5. Procedimiento de Limpieza Total (Teardown)
 
 Para garantizar cero costos al concluir la evaluación o el ciclo académico, ejecute:

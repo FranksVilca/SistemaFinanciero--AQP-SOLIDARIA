@@ -171,9 +171,13 @@ jobs:
         run: python infra/scripts/check_sam_cors.py infra/template.yaml
 
   deploy:
-    # Only when every gate passed, on the main branch, and when a deploy role (OIDC, no long-lived keys) is configured.
+    # Only when every gate passed, on the main branch, and when the repository variables that identify the stack are set:
+    # the deploy role (OIDC, no long-lived keys) and the Cognito domain prefix, which is unique in all of AWS and belongs
+    # to one deployment. Without the prefix the template default would replace the domain of the existing stack.
     needs: [lint-format, typecheck, unit, integration, infra-tests, emulator, iac-scan, dependency-audit]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.AWS_DEPLOY_ROLE_ARN != ''
+    if: >-
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      vars.AWS_DEPLOY_ROLE_ARN != '' && vars.COGNITO_DOMAIN_PREFIX != ''
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -199,3 +203,10 @@ jobs:
           --resolve-s3
           --no-confirm-changeset
           --no-fail-on-empty-changeset
+          --parameter-overrides
+          StageName=academic
+          CognitoDomainPrefix=${{ vars.COGNITO_DOMAIN_PREFIX }}
+          EnablePitr=false
+          EnableCloudTrail=false
+          EnableGuardDuty=false
+          EnableSecurityHub=false

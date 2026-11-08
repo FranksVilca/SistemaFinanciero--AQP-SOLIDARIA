@@ -83,6 +83,7 @@ Comprobar y guardar en `evidence/`:
 | T10 (ya demostrado en el emulador; confirmación opcional) | Simulador de IAM o credenciales del rol, ver `evidence/t10-access-denied.md` | `AccessDeniedException` |
 | Sesión revocada | Revocar el refresh token y llamar a una acción sensible con el access token aún vigente | 401 |
 | CSP y login | Iniciar sesión en el dominio de CloudFront | El intercambio de código con Cognito no es bloqueado |
+| CORS del API | `curl -i -X OPTIONS <ApiEndpoint>/v1/projects -H "Origin: <FrontendUrl>" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: authorization,content-type"` | 204 con `access-control-allow-origin` igual al origen del SPA; con otro origen, sin esa cabecera. Antes de esta comprobación el API respondió 404 (ver T107) |
 | Auditoría inmutable | Intentar `UpdateItem` sobre la tabla Audit con un rol de función | `AccessDenied` |
 | Recuperación (producción) | Verificar `DeletionProtectionEnabled` y PITR activos | Ambos activos |
 
