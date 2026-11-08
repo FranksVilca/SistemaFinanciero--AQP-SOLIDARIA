@@ -114,19 +114,18 @@ sam deploy --guided \
 Los parámetros opcionales (GuardDuty y Security Hub con prueba de 30 días, PITR, CloudTrail) y lo que queda fuera del plan gratuito están en [docs/free-plan-guide.md](docs/free-plan-guide.md).
 
 ### Paso 3: Construir y Publicar Frontend
-Copie las salidas de SAM (`ApiEndpoint`, `UserPoolId`, `UserPoolClientId`) a `frontend/.env`:
-```env
-VITE_API_BASE_URL=https://<apiId>.execute-api.us-east-1.amazonaws.com/academic/v1
-VITE_COGNITO_AUTHORITY=https://cognito-idp.us-east-1.amazonaws.com/<userPoolId>
-VITE_COGNITO_CLIENT_ID=<userPoolClientId>
+
+Un solo comando toma del stack ya desplegado la dirección del API y los identificadores de Cognito, compila el
+frontend con ellos, lo sube al bucket privado con las cabeceras de caché adecuadas e invalida CloudFront:
+
+```bash
+bash infra/scripts/publish-frontend.sh --dry-run   # compila y lista lo que subiría, sin cambiar nada
+bash infra/scripts/publish-frontend.sh             # publica
 ```
 
-Compile los activos estáticos y súbalos al bucket privado de S3:
-```bash
-cd ../frontend
-npm run build
-aws s3 sync dist/ s3://<FrontendBucketName>/ --delete
-```
+Necesita el AWS CLI y credenciales de la cuenta del stack (`AWS_PROFILE`). Si el stack se desplegó con una versión
+anterior de la plantilla, redespliéguelo antes: el script lee el bucket y la distribución de las salidas
+`FrontendBucketName` y `CloudFrontDistributionId`.
 
 ---
 
@@ -144,8 +143,8 @@ secretos):
 Sin las dos, el trabajo de despliegue se omite y el resto del pipeline corre igual. El prefijo es obligatorio porque es
 único en todo AWS: con el valor por defecto el pipeline reemplazaría el dominio de Cognito de un stack ya desplegado y
 rompería el inicio de sesión. Las demás opciones (CloudTrail, GuardDuty, Security Hub, PITR) se despliegan apagadas; si
-las activaste a mano, cámbialas en el paso de `sam deploy` de `.github/workflows/ci.yml`. Este trabajo despliega el
-backend; el frontend se sigue publicando como en el paso 3.
+las activaste a mano, cámbialas en el paso de `sam deploy` de `.github/workflows/ci.yml`. Tras desplegar, el mismo
+trabajo publica el frontend con el script del paso 3.
 
 ## 5. Procedimiento de Limpieza Total (Teardown)
 

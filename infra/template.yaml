@@ -905,6 +905,12 @@ Outputs:
   CognitoHostedUiUrl:
     Description: URL base del dominio de Cognito (Hosted UI y endpoints OAuth)
     Value: !Sub "https://${CognitoUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com"
+  FrontendBucketName:
+    Description: Bucket privado de S3 donde se publica el frontend (infra/scripts/publish-frontend.sh)
+    Value: !Ref FrontendBucket
+  CloudFrontDistributionId:
+    Description: Distribución de CloudFront del frontend (se invalida al publicar una versión nueva)
+    Value: !Ref CloudFrontDistribution
   FrontendUrl:
     Description: URL del frontend servido por CloudFront
     Value: !Sub "https://${CloudFrontDistribution.DomainName}"

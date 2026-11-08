@@ -9,6 +9,7 @@ that, only the translated template can.
 """
 
 import json
+import os
 import sys
 
 from samtranslator.translator.transform import transform
@@ -25,6 +26,9 @@ class NoManagedPolicies:
 
 
 def translate(path):
+    # The translator resolves AWS::Region from the AWS configuration of the machine. A CI runner has none, and the
+    # check must not depend on where it runs: the CORS it checks is the same in any region.
+    os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
     with open(path, encoding="utf-8") as handle:
         manifest = yaml_parse(handle)
     for resource in manifest["Resources"].values():
