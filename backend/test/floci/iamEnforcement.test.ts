@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   BatchWriteItemCommand,
   DeleteItemCommand,
@@ -10,8 +8,8 @@ import {
   UpdateItemCommand,
   type DynamoDBClientConfig,
 } from "@aws-sdk/client-dynamodb";
-import { beforeEach, describe, expect, inject, it, vi } from "vitest";
-import { buildEvent, identityFor, type TestEvent } from "../integration/helpers/events.js";
+import { beforeEach, describe, expect, it } from "vitest";
+import { buildEvent, identityFor } from "../integration/helpers/events.js";
 import {
   clearAllTables,
   readAllAuditEvents,
@@ -20,6 +18,7 @@ import {
   seedProject,
 } from "../integration/helpers/seed.js";
 import { FLOCI_ENV } from "./flociEnv.js";
+import { credentialsOf, runHandlerAs } from "./helpers/runHandler.js";
 
 /**
  * T10: every function runs with an IAM user that holds exactly the inline policy of its role in
@@ -27,7 +26,6 @@ import { FLOCI_ENV } from "./flociEnv.js";
  * permissions; the second proves that everything outside the contract is answered with AccessDenied.
  */
 
-const SOURCE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../src");
 const ACCESS_DENIED = "AccessDeniedException";
 
 type TableKey = "projects" | "donations" | "idempotency" | "audit";
@@ -59,8 +57,6 @@ const MAY_UPDATE: Record<string, TableKey[]> = {
   "donations/simulateDonation.handler": ["projects", "donations"],
 };
 
-const credentialsOf = (handlerRef: string) => inject("functionCredentials")[handlerRef];
-
 function clientAs(handlerRef: string): DynamoDBClient {
   const config: DynamoDBClientConfig = {
     region: FLOCI_ENV.AWS_REGION,
@@ -68,26 +64,6 @@ function clientAs(handlerRef: string): DynamoDBClient {
     credentials: credentialsOf(handlerRef),
   };
   return new DynamoDBClient(config);
-}
-
-/** Runs the real handler with the credentials of its own IAM user. */
-async function runHandlerAs(handlerRef: string, event: TestEvent): Promise<{ statusCode: number; body: string }> {
-  const { accessKeyId, secretAccessKey } = credentialsOf(handlerRef);
-  const previous = { id: process.env.AWS_ACCESS_KEY_ID, secret: process.env.AWS_SECRET_ACCESS_KEY };
-  process.env.AWS_ACCESS_KEY_ID = accessKeyId;
-  process.env.AWS_SECRET_ACCESS_KEY = secretAccessKey;
-  try {
-    vi.resetModules(); // a fresh DynamoDB client that picks up the function credentials
-    const separator = handlerRef.lastIndexOf(".");
-    const file = resolve(SOURCE_ROOT, `${handlerRef.slice(0, separator)}.ts`);
-    const loaded: Record<string, (event: TestEvent) => Promise<{ statusCode: number; body: string }>> = await import(
-      pathToFileURL(file).href
-    );
-    return await loaded[handlerRef.slice(separator + 1)](event);
-  } finally {
-    process.env.AWS_ACCESS_KEY_ID = previous.id;
-    process.env.AWS_SECRET_ACCESS_KEY = previous.secret;
-  }
 }
 
 async function errorNameOf(operation: Promise<unknown>): Promise<string | undefined> {

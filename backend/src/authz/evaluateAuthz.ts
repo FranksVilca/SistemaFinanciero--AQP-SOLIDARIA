@@ -1,4 +1,5 @@
 import { AUTHZ_ACTIONS, PUBLIC_ACTIONS, ROLES, type AuthzAction } from "../shared/constants.js";
+import type { HandlerDenialReason } from "../shared/errors.js";
 import { logError } from "../shared/logger.js";
 import type { AuthPrincipal } from "./claims.js";
 
@@ -17,7 +18,15 @@ export interface PolicyAuthorizer {
   isAuthorized(context: AuthzContext): Promise<boolean>;
 }
 
-export type DenialReason = "UNAUTHENTICATED" | "ROLE" | "OWNER" | "ENGINE_ERROR" | "SESSION_REVOKED";
+export type DenialReason =
+  | "UNAUTHENTICATED"
+  | "ROLE"
+  | "OWNER"
+  | "ENGINE_ERROR"
+  | "SESSION_REVOKED"
+  | "SEPARATION_OF_DUTIES"
+  | "ROLE_REVOKED"
+  | HandlerDenialReason;
 
 export type AuthzDecision = { allowed: true } | { allowed: false; reason: DenialReason };
 
@@ -30,6 +39,23 @@ const ROLE_BY_ACTION: Partial<Record<AuthzAction, string>> = {
   [AUTHZ_ACTIONS.viewAudit]: ROLES.auditor,
 };
 
+const KNOWN_ROLES: readonly string[] = Object.values(ROLES);
+
+/**
+ * The auditor audits what the other roles do, so the role cannot be combined with any other: the same person would
+ * audit their own actions.
+ */
+export function violatesSeparationOfDuties(groups: readonly string[]): boolean {
+  const roles = groups.filter((group) => KNOWN_ROLES.includes(group));
+  return roles.includes(ROLES.auditor) && roles.length > 1;
+}
+
+export function holdsRequiredRole(groups: readonly string[], action: AuthzAction): boolean {
+  if (violatesSeparationOfDuties(groups)) return false;
+  const requiredRole = ROLE_BY_ACTION[action];
+  return requiredRole !== undefined && groups.includes(requiredRole);
+}
+
 function isPublicAction(action: AuthzAction): boolean {
   return PUBLIC_ACTIONS.includes(action);
 }
@@ -41,8 +67,7 @@ export class EmbeddedPolicyAuthorizer implements PolicyAuthorizer {
     if (isPublicAction(action)) return true;
     if (!principal?.sub) return false;
 
-    const requiredRole = ROLE_BY_ACTION[action];
-    if (!requiredRole || !principal.groups.includes(requiredRole)) return false;
+    if (!holdsRequiredRole(principal.groups, action)) return false;
 
     if (requiresOwner || resourceOwnerSub !== undefined) {
       return resourceOwnerSub === principal.sub;
@@ -55,6 +80,7 @@ export const defaultAuthorizer: PolicyAuthorizer = new EmbeddedPolicyAuthorizer(
 
 async function explainDenial(context: AuthzContext, authorizer: PolicyAuthorizer): Promise<DenialReason> {
   if (!context.principal?.sub) return "UNAUTHENTICATED";
+  if (violatesSeparationOfDuties(context.principal.groups)) return "SEPARATION_OF_DUTIES";
   const withoutOwnership = { ...context, resourceOwnerSub: undefined, requiresOwner: false };
   return (await authorizer.isAuthorized(withoutOwnership)) ? "OWNER" : "ROLE";
 }

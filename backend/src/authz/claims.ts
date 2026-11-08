@@ -2,6 +2,8 @@ import type { ApiEvent } from "../shared/apiEvent.js";
 
 export interface AuthPrincipal {
   sub: string;
+  /** Name of the user in the pool: what the administrative calls of the identity provider ask for. */
+  username?: string;
   email?: string;
   groups: string[];
 }
@@ -44,6 +46,7 @@ export function extractAuthClaims(event: ApiEvent): AuthPrincipal | undefined {
 
   return {
     sub: String(claims.sub),
+    username: claims.username ? String(claims.username) : undefined,
     email: claims.email ? String(claims.email) : undefined,
     groups: parseGroupsClaim(claims["cognito:groups"]),
   };

@@ -66,7 +66,11 @@ Cada principio de NIST SP 800-207 con el control que lo implementa, la evidencia
 | `backend/test/floci/refreshRevocation.test.ts` | Revocar el refresh token en el endpoint que el SPA deriva del descubrimiento deja inservibles el refresh y el access token |
 | `backend/test/floci/e2e/fullStack.test.ts` | De extremo a extremo con las Lambdas reales: una sesión revocada recibe 401 en una acción sensible con su token todavía vigente |
 | `backend/test/infra/mfa.test.ts` | Tokens de acceso e identidad de 15 minutos como máximo |
+| `backend/test/integration/sessionCheck.test.ts`, `backend/test/floci/roleRevalidation.test.ts`, `backend/test/floci/e2e/fullStack.test.ts` | Quitar el rol a una persona cuyo token sigue vigente: las acciones sensibles releen sus grupos en Cognito y responden 403 con el motivo `ROLE_REVOKED`; si no se pueden leer, también (falla cerrada). En el emulador la lectura se hace con las credenciales IAM de la propia función, y las que no deben hacerla reciben `AccessDenied` |
+| `backend/test/infra/roleRevalidation.test.ts` | Solo las funciones sensibles tienen `cognito-idp:AdminListGroupsForUser`, y solo sobre el pool del stack |
 | `backend/test/browser/spa.test.ts` | Los tokens no llegan a `localStorage` ni `sessionStorage`; al salir se revoca el refresh token **y se cierra la sesión del Hosted UI** (sin eso, la siguiente persona que usara el navegador entraba como la anterior sin credenciales); un rol no ve las pantallas ni los botones de otro y la API rechaza el intento forzado y lo audita con el proyecto afectado |
+
+**Límite declarado.** Las acciones que no son sensibles (donar, ver el propio historial) no revalidan la sesión ni los grupos: un token robado, o de alguien a quien se le quitó un rol, sirve hasta 15 minutos para eso; la propiedad por recurso limita el daño a las donaciones de esa persona. Para cortarlo antes hay que terminar sus sesiones (`docs/operations-notes.md`, sección 4).
 
 **Estado: Cumple (real pendiente)** — todo lo anterior está demostrado en el emulador; solo falta la pasada de confirmación en AWS real (`evidence/test-run-report.md`, sección 3).
 
@@ -79,6 +83,7 @@ Cada principio de NIST SP 800-207 con el control que lo implementa, la evidencia
 | `backend/test/authz.test.ts` | Decisiones por rol y propietario, con el motivo de la denegación; un fallo del motor deniega |
 | `backend/test/integration/authzMatrix.test.ts` | Matriz rol × acción: todo lo no permitido da 401/403 sin cambiar datos |
 | `backend/test/integration/donationFlow.test.ts` | Reglas de estado (409) e idempotencia |
+| `backend/test/integration/separationOfDuties.test.ts`, `backend/test/authz.test.ts` | Separación de funciones: `AUDITOR` no se combina con otro rol (403, motivo `SEPARATION_OF_DUTIES`); conflicto de intereses: quien creó un proyecto no puede donarle (403, motivo `CONFLICT_OF_INTEREST`); ambos quedan auditados y la vista pública nunca muestra quién creó un proyecto |
 
 **Estado: Cumple en lo básico (declarado)** — la política no usa postura del dispositivo ni riesgo de sesión, que NIST menciona como atributos opcionales.
 
@@ -92,6 +97,7 @@ Cada principio de NIST SP 800-207 con el control que lo implementa, la evidencia
 | `backend/test/infra/detection.test.ts` | GuardDuty y Security Hub apagados por defecto y sin dependencias cruzadas |
 | `backend/test/floci/stackDeployment.test.ts` | Las opciones de detección despliegan |
 | `.github/workflows/ci.yml`, `.checkov.yaml` | Compuertas del CI y omisiones justificadas |
+| `.github/workflows/ci.yml` (etapa `dependency-audit`) | `npm audit` bloquea el despliegue ante una vulnerabilidad alta o crítica en una dependencia de producción (encontró una en `zod`, ya corregida); las de las herramientas de desarrollo solo se reportan |
 
 **Estado: Parcial (declarado)** — no hay postura del dispositivo ni evaluación continua del riesgo de la sesión; GuardDuty y Security Hub dependen del tipo de cuenta (`docs/free-plan-guide.md`).
 

@@ -9,6 +9,12 @@ import {
   ListAccessKeysCommand,
   PutUserPolicyCommand,
 } from "@aws-sdk/client-iam";
+import {
+  CognitoIdentityProviderClient,
+  CreateGroupCommand,
+  CreateUserPoolCommand,
+  DeleteUserPoolCommand,
+} from "@aws-sdk/client-cognito-identity-provider";
 import { CreateTableCommand, DeleteTableCommand, DynamoDBClient, ListTablesCommand } from "@aws-sdk/client-dynamodb";
 import type { GlobalSetupContext } from "vitest/node";
 import { buildTableDefinitions } from "../integration/helpers/tableDefinitions.js";
@@ -24,6 +30,8 @@ export interface FunctionCredentials {
 declare module "vitest" {
   export interface ProvidedContext {
     functionCredentials: Record<string, FunctionCredentials>;
+    /** A user pool with the three role groups, whose ARN is the resource of the groups permission of the functions. */
+    rolesPool: { userPoolId: string; arn: string };
   }
 }
 
@@ -110,11 +118,24 @@ async function recreateUser(iam: IAMClient, userName: string, policyDocument: st
   return { accessKeyId: AccessKey!.AccessKeyId!, secretAccessKey: AccessKey!.SecretAccessKey! };
 }
 
+const ROLE_GROUPS = ["DONANTE", "GESTOR", "AUDITOR"];
+
+async function createRolesPool(): Promise<{ userPoolId: string; arn: string }> {
+  const cognito = new CognitoIdentityProviderClient(clientConfig);
+  const { UserPool } = await cognito.send(new CreateUserPoolCommand({ PoolName: "aqp-floci-roles" }));
+  for (const GroupName of ROLE_GROUPS) {
+    await cognito.send(new CreateGroupCommand({ UserPoolId: UserPool!.Id!, GroupName }));
+  }
+  return { userPoolId: UserPool!.Id!, arn: UserPool!.Arn! };
+}
+
 export default async function setup({ provide }: GlobalSetupContext): Promise<() => Promise<void>> {
   await startUserInfoStub();
   const dynamo = new DynamoDBClient(clientConfig);
   await waitForFloci(dynamo);
   const arns = await recreateTables(dynamo);
+  const rolesPool = await createRolesPool();
+  arns.CognitoUserPool = rolesPool.arn;
 
   // One IAM user per function, holding exactly the inline policy that infra/template.yaml gives its role.
   const iam = new IAMClient(clientConfig);
@@ -124,8 +145,12 @@ export default async function setup({ provide }: GlobalSetupContext): Promise<()
     functionCredentials[handlerOf(definition)] = await recreateUser(iam, `fn-${logicalId}`, policyDocument);
   }
   provide("functionCredentials", functionCredentials);
+  provide("rolesPool", rolesPool);
 
   return async () => {
     await new Promise<void>((resolve) => (userInfoServer ? userInfoServer.close(() => resolve()) : resolve()));
+    await new CognitoIdentityProviderClient(clientConfig)
+      .send(new DeleteUserPoolCommand({ UserPoolId: rolesPool.userPoolId }))
+      .catch(() => undefined);
   };
 }

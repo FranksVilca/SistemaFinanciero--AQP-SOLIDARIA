@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { AdminUserGlobalSignOutCommand } from "@aws-sdk/client-cognito-identity-provider";
+import {
+  AdminAddUserToGroupCommand,
+  AdminRemoveUserFromGroupCommand,
+  AdminUserGlobalSignOutCommand,
+} from "@aws-sdk/client-cognito-identity-provider";
 import type { StackResourceSummary } from "@aws-sdk/client-cloudformation";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cognito, createUserInGroup, hostedSignIn, obtainTokens, type PoolRef } from "../helpers/cognitoUsers.js";
@@ -225,6 +229,21 @@ describe("full stack: gateway, authorizer, Lambda with its IAM role, DynamoDB an
 
       expect((await api("GET", "/v1/audit", { token: scoped.donor.access })).status).toBe(403);
       expect((await api("GET", "/v1/audit", { token: scoped.manager.access })).status).toBe(403);
+    });
+
+    it("rejects a sensitive action once the role was removed, although the token still carries it", async () => {
+      const identity = { UserPoolId: userPoolId, Username: `auditor-${runId}@aqpsolidaria.pe`, GroupName: "AUDITOR" };
+      expect((await api("GET", "/v1/audit", { token: scoped.auditor.access })).status).toBe(200);
+
+      await cognito.send(new AdminRemoveUserFromGroupCommand(identity));
+      try {
+        // The same access token, whose groups claim still says AUDITOR: the function asks Cognito for the current ones.
+        expect((await api("GET", "/v1/audit", { token: scoped.auditor.access })).status).toBe(403);
+      } finally {
+        await cognito.send(new AdminAddUserToGroupCommand(identity));
+      }
+
+      expect((await api("GET", "/v1/audit", { token: scoped.auditor.access })).status).toBe(200);
     });
 
     it("rejects a sensitive action once the session was revoked, although the token has not expired (T13)", async () => {

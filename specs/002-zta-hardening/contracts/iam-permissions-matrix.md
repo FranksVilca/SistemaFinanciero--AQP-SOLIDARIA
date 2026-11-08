@@ -16,6 +16,10 @@ Acciones de DynamoDB permitidas. Todo lo no listado está denegado. Sin comodine
 | GetMyDonations | | R (incluye índice `donorSub-createdAt-index`) | | P (solo denegaciones) |
 | GetAuditEvents | | | | R (`Query`), P (solo denegaciones) |
 
+## Cognito
+
+Una sola acción, `cognito-idp:AdminListGroupsForUser`, sobre el pool de usuarios del stack, solo para `PublishProject`, `SimulateDonation` y `GetAuditEvents` (las acciones sensibles releen los grupos de la persona, porque un token conserva los de cuando se emitió). Ninguna otra función tiene permisos de `cognito-idp`. Lo verifica `backend/test/infra/roleRevalidation.test.ts` y, con IAM activo, `backend/test/floci/roleRevalidation.test.ts`.
+
 ## Reglas verificadas por prueba
 
 1. Ninguna sentencia incluye `Delete*`, `BatchWrite*`, `Scan` ni `dynamodb:*`.

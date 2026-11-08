@@ -15,7 +15,7 @@ export function parseJsonBody<T>(event: ApiEvent, schema: ZodType<T>, fixedMessa
 
   const result = schema.safeParse(parsed);
   if (!result.success) {
-    throw new ValidationError(fixedMessage ?? result.error.errors.map((issue) => issue.message).join(", "));
+    throw new ValidationError(fixedMessage ?? result.error.issues.map((issue) => issue.message).join(", "));
   }
   return result.data;
 }

@@ -404,14 +404,18 @@ Tras Foundational: A → US1 + US2; B → US3 (luego US4 y US9); C → US7 (T051
 - [X] T097 Personalización del Hosted UI clásico por CSS (`CognitoHostedUiBranding` y `ManagedLoginVersion: 1` en `infra/template.yaml`) con `backend/test/infra/hostedUi.test.ts`, que exige solo las clases y propiedades que Cognito acepta
 - [X] T098 Etapa `browser` en `.github/workflows/ci.yml`, sin bloquear el despliegue hasta verla pasar en un runner
 - [X] T099 `.local/` en `.gitignore` (certificado y registros que genera `npm run local`)
-- [ ] T100 Decidir la política para un usuario con más de un rol (por ejemplo AUDITOR y DONANTE: hoy el sistema lo permite y un auditor podría auditar sus propias donaciones) y, según la decisión, implementarla en `withAuth` con su prueba; ver `followups.md`
+- [X] T100 Política para un usuario con más de un rol: `AUDITOR` no se combina con otro rol (`SEPARATION_OF_DUTIES`, `backend/src/authz/evaluateAuthz.ts`) y quien creó un proyecto no puede donarle (`CONFLICT_OF_INTEREST`, `createdBy` en el proyecto, nunca en las vistas públicas); ambas se auditan; `backend/test/integration/separationOfDuties.test.ts`, `backend/test/authz.test.ts`
+- [X] T101 Las acciones sensibles releen los grupos de la persona en Cognito (`backend/src/authz/currentGroups.ts`, `AdminListGroupsForUser` solo para las tres funciones sensibles y sobre el pool del stack) y rechazan con `ROLE_REVOKED`, también si no pueden leerlos; pruebas en integración, infraestructura, emulador (con IAM) y e2e con Lambdas reales; procedimiento de baja en `docs/operations-notes.md`
+- [X] T102 Etapa `dependency-audit` en el CI (`npm audit`: bloquea por vulnerabilidades altas o críticas en producción; reporta las de desarrollo); subir `zod` a 4.6.7 por la vulnerabilidad alta que encontró y quitar `zod` del frontend, que no lo usaba
+- [ ] T103 Subir `vitest` a la versión 5 (cambio mayor) para cerrar las advertencias de `vitest`/`tinypool`, solo de desarrollo
+- [ ] T104 Decidir si las personas que se registran reciben `DONANTE` automáticamente (disparador de confirmación en Cognito) y si hay un flujo de solicitud para ser gestor, aprobado por una persona administradora; ver `followups.md`
 
 ---
 
 ## Notes
 
 - [P] = archivos distintos y sin dependencias pendientes.
-- T090–T100 (fase 15) se añadieron al pedir que todo se pudiera ver y probar con un simulador, y al probar el frontend a mano.
+- T090–T104 (fase 15) se añadieron al pedir que todo se pudiera ver y probar con un simulador, y al probar el frontend a mano.
 - Evidencia que exige AWS real (T045, T070) queda **pendiente** hasta ejecutarse; no se marca como cumplida por pruebas locales.
 - El usuario realiza los commits; las tareas no incluyen commits.
 - Evitar: tareas vagas, conflictos en `infra/template.yaml`, dependencias cruzadas que rompan la independencia de historias.

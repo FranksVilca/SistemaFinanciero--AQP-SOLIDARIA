@@ -1,9 +1,10 @@
-const DONOR_IDENTITY_FIELDS = ["donorSub"] as const;
+// Who donated and who created the project are identities: no public view exposes them.
+const PRIVATE_FIELDS = ["donorSub", "createdBy"] as const;
 
-/** Public views of a project never expose any donor identity. */
+/** Public view of a project: the project without the identities it carries. */
 export function toPublicProject(project: Record<string, unknown>): Record<string, unknown> {
   const publicView = { ...project };
-  for (const field of DONOR_IDENTITY_FIELDS) {
+  for (const field of PRIVATE_FIELDS) {
     delete publicView[field];
   }
   return publicView;

@@ -10,7 +10,7 @@ import {
 } from "../shared/constants.js";
 import { docClient, GetCommand, TABLE_NAMES, TransactWriteCommand } from "../shared/dynamo.js";
 import { DYNAMO_ERROR, isDynamoError } from "../shared/dynamoErrors.js";
-import { ConflictError, NotFoundError, ValidationError } from "../shared/errors.js";
+import { ConflictError, NotFoundError, PolicyDenialError, ValidationError } from "../shared/errors.js";
 import { hashPayload } from "../shared/hash.js";
 import { logInfo } from "../shared/logger.js";
 import { parseJsonBody } from "../shared/request.js";
@@ -29,11 +29,15 @@ function readIdempotencyKey(event: ApiEvent): string {
   return rawKey;
 }
 
-async function assertProjectIsPublished(projectId: string): Promise<void> {
+async function assertProjectAcceptsDonationFrom(projectId: string, donorSub: string): Promise<void> {
   const { Item: project } = await docClient.send(
     new GetCommand({ TableName: TABLE_NAMES.projects, Key: { projectId } })
   );
   if (!project) throw new NotFoundError("Proyecto no encontrado");
+  // Whoever manages a project must not raise its amount by donating to it.
+  if (project.createdBy === donorSub) {
+    throw new PolicyDenialError("CONFLICT_OF_INTEREST", "Acceso denegado: no puede donar a un proyecto que usted creó");
+  }
   if (project.status !== PROJECT_STATUS.published) {
     throw new ConflictError("El proyecto no está disponible para donaciones (no PUBLICADO)");
   }
@@ -61,7 +65,7 @@ export const handler = withAuth(
     const donorSub = requirePrincipal(context).sub;
     const idempotencyKey = readIdempotencyKey(event);
     const { projectId, amountCents } = parseJsonBody(event, CreateDonationSchema);
-    await assertProjectIsPublished(projectId);
+    await assertProjectAcceptsDonationFrom(projectId, donorSub);
 
     const payloadHash = hashPayload({ projectId, amountCents });
     const idempotencyPk = `${donorSub}#createDonation#${idempotencyKey}`;

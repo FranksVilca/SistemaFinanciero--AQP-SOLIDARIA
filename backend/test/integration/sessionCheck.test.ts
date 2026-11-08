@@ -7,6 +7,7 @@ import { handler as getMyDonations } from "../../src/donations/getMyDonations.js
 import { handler as simulateDonation } from "../../src/donations/simulateDonation.js";
 import { handler as publishProject } from "../../src/projects/publishProject.js";
 import { SESSION_CHECK_TIMEOUT_MS } from "../../src/shared/constants.js";
+import { replaceGroupsLookup } from "../../src/authz/currentGroups.js";
 import { buildEvent, identityFor } from "./helpers/events.js";
 import { clearAllTables, readAllAuditEvents, readDonation, seedDonation, seedProject } from "./helpers/seed.js";
 
@@ -132,5 +133,82 @@ describe("session revalidation on sensitive actions", () => {
     expect(created.statusCode).toBe(201);
     expect(history.statusCode).toBe(200);
     expect(requestCount).toBe(0);
+  });
+});
+
+describe("role revalidation on sensitive actions: a token keeps the groups it was issued with", () => {
+  beforeEach(clearAllTables);
+  afterEach(async () => {
+    await stopServerCompletely();
+    replaceGroupsLookup(async (principal) => principal.groups);
+  });
+
+  it("refuses a manager who was removed from GESTOR after the token was issued, and audits why", async () => {
+    await startUserInfo({ kind: "status", status: 200 }); // the session itself is still valid
+    replaceGroupsLookup(async () => ["DONANTE"]); // the provider no longer lists GESTOR
+
+    const response = await publishProject(await draftPublishEvent());
+    const [event] = await readAllAuditEvents();
+
+    expect(response.statusCode).toBe(403);
+    expect(event).toMatchObject({ outcome: "DENIED", reason: "ROLE_REVOKED", action: "PublishProject" });
+  });
+
+  it("refuses an auditor whose role was removed, even though the token still says AUDITOR", async () => {
+    await startUserInfo({ kind: "status", status: 200 });
+    replaceGroupsLookup(async () => []);
+
+    const response = await getAuditEvents(buildEvent({ identity: identityFor("AUDITOR") }));
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it("refuses when the groups cannot be read (fail closed)", async () => {
+    await startUserInfo({ kind: "status", status: 200 });
+    replaceGroupsLookup(async () => undefined);
+
+    const response = await getAuditEvents(buildEvent({ identity: identityFor("AUDITOR") }));
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it("refuses when the person gained another role after the token was issued and the auditor role stops being exclusive", async () => {
+    await startUserInfo({ kind: "status", status: 200 });
+    replaceGroupsLookup(async () => ["AUDITOR", "DONANTE"]);
+
+    const response = await getAuditEvents(buildEvent({ identity: identityFor("AUDITOR") }));
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it("lets the action through while the provider still lists the role", async () => {
+    await startUserInfo({ kind: "status", status: 200 });
+    replaceGroupsLookup(async () => ["AUDITOR"]);
+
+    const response = await getAuditEvents(buildEvent({ identity: identityFor("AUDITOR") }));
+
+    expect(response.statusCode).toBe(200);
+  });
+
+  it("asks the provider for the groups only on sensitive actions", async () => {
+    let lookups = 0;
+    replaceGroupsLookup(async (principal) => {
+      lookups += 1;
+      return principal.groups;
+    });
+
+    await getMyDonations(buildEvent({ identity: identityFor("DONANTE") }));
+    await createProject(
+      buildEvent({
+        identity: identityFor("GESTOR"),
+        body: {
+          title: "Agua para Chivay",
+          description: "Instalar un sistema de agua potable",
+          goalAmountCents: 100_000,
+        },
+      })
+    );
+
+    expect(lookups).toBe(0);
   });
 });

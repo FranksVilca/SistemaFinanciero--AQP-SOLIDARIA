@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { extractAuthClaims, parseGroupsClaim } from "../src/authz/claims.js";
-import { authorize, EmbeddedPolicyAuthorizer, type PolicyAuthorizer } from "../src/authz/evaluateAuthz.js";
+import {
+  authorize,
+  EmbeddedPolicyAuthorizer,
+  violatesSeparationOfDuties,
+  type PolicyAuthorizer,
+} from "../src/authz/evaluateAuthz.js";
 import { AUTHZ_ACTIONS } from "../src/shared/constants.js";
 
 const authorizer = new EmbeddedPolicyAuthorizer();
@@ -125,5 +130,27 @@ describe("claims extraction (T11)", () => {
     [42, []],
   ])("parses the groups claim %j", (raw, expected) => {
     expect(parseGroupsClaim(raw)).toEqual(expected);
+  });
+});
+
+describe("separation of duties", () => {
+  it.each([
+    [["AUDITOR"], false],
+    [["DONANTE"], false],
+    [["GESTOR", "DONANTE"], false],
+    [["AUDITOR", "DONANTE"], true],
+    [["AUDITOR", "GESTOR"], true],
+    [["AUDITOR", "unrelated-group"], false],
+  ])("groups %j violate it: %s", (groups, expected) => {
+    expect(violatesSeparationOfDuties(groups)).toBe(expected);
+  });
+
+  it("denies every protected action to a combined auditor, with its own reason", async () => {
+    const combined = { sub: "sub-1", groups: ["AUDITOR", "DONANTE"] };
+
+    for (const action of [AUTHZ_ACTIONS.viewAudit, AUTHZ_ACTIONS.createDonation, AUTHZ_ACTIONS.viewMyDonations]) {
+      const decision = await authorize({ principal: combined, action, resourceType: "Donation" }, authorizer);
+      expect(decision).toEqual({ allowed: false, reason: "SEPARATION_OF_DUTIES" });
+    }
   });
 });

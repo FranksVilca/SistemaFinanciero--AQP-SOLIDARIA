@@ -10,11 +10,12 @@ import {
   SENSITIVE_ACTIONS,
   type AuthzAction,
 } from "../shared/constants.js";
-import { ForbiddenError, UnauthorizedError } from "../shared/errors.js";
+import { ForbiddenError, PolicyDenialError, UnauthorizedError } from "../shared/errors.js";
 import { logError, logInfo } from "../shared/logger.js";
 import { buildErrorResponse, type ApiResponse } from "../shared/response.js";
 import { extractAuthClaims, type AuthPrincipal } from "./claims.js";
-import { authorize, type AuthzDecision, type ResourceType } from "./evaluateAuthz.js";
+import { currentGroupsOf } from "./currentGroups.js";
+import { authorize, holdsRequiredRole, type AuthzDecision, type ResourceType } from "./evaluateAuthz.js";
 import { isSessionActive } from "./sessionCheck.js";
 import { WITH_AUTH } from "./withAuthMarker.js";
 
@@ -55,6 +56,7 @@ interface RequestAudit {
 
 const ALLOWED: AuthzDecision = { allowed: true };
 const SESSION_REVOKED: Denial = { allowed: false, reason: "SESSION_REVOKED" };
+const ROLE_REVOKED: Denial = { allowed: false, reason: "ROLE_REVOKED" };
 
 /** Returns the authenticated principal; protected handlers can only run after authorization succeeded. */
 export function requirePrincipal(context: { principal: AuthPrincipal | undefined }): AuthPrincipal {
@@ -121,13 +123,21 @@ async function rejectIfDenied(decision: AuthzDecision, request: RequestAudit): P
   throw toError(decision, request.action);
 }
 
+/** The token says which roles the person had when it was issued; a sensitive action asks the provider for the current ones. */
+async function stillHoldsRole(request: RequestAudit): Promise<boolean> {
+  if (!request.principal) return false;
+  const groups = await currentGroupsOf(request.principal);
+  return groups !== undefined && holdsRequiredRole(groups, request.action);
+}
+
 async function checkSession(
   request: RequestAudit,
   sensitiveWhen?: (event: ApiEvent) => boolean
 ): Promise<AuthzDecision> {
   const isSensitive = SENSITIVE_ACTIONS.includes(request.action) || sensitiveWhen?.(request.event) === true;
   if (!isSensitive) return ALLOWED;
-  return (await isSessionActive(request.event)) ? ALLOWED : SESSION_REVOKED;
+  if (!(await isSessionActive(request.event))) return SESSION_REVOKED;
+  return (await stillHoldsRole(request)) ? ALLOWED : ROLE_REVOKED;
 }
 
 /**
@@ -180,6 +190,8 @@ export function withAuth<TResource = undefined>(
       await auditSuccess(response, request);
       return response;
     } catch (error) {
+      // A rule of the domain that the handler enforces is an authorization denial too: it is audited as one.
+      if (error instanceof PolicyDenialError) await auditDenial({ allowed: false, reason: error.reason }, request);
       logError("Request failed", error, { requestId, action: options.action });
       return buildErrorResponse(error, requestId);
     }

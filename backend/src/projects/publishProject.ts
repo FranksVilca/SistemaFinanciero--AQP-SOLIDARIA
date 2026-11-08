@@ -4,6 +4,7 @@ import { docClient, TABLE_NAMES, UpdateCommand } from "../shared/dynamo.js";
 import { DYNAMO_ERROR, isDynamoError } from "../shared/dynamoErrors.js";
 import { ConflictError } from "../shared/errors.js";
 import { logInfo } from "../shared/logger.js";
+import { toPublicProject } from "../shared/projectView.js";
 import { requirePathParameter } from "../shared/request.js";
 import { buildSuccessResponse } from "../shared/response.js";
 
@@ -29,7 +30,7 @@ export const handler = withAuth(
       );
 
       logInfo("Project published", { requestId, projectId });
-      return buildSuccessResponse(result.Attributes);
+      return buildSuccessResponse(toPublicProject(result.Attributes ?? {}));
     } catch (error) {
       if (isDynamoError(error, DYNAMO_ERROR.conditionalCheckFailed)) {
         throw new ConflictError("El proyecto no existe en estado BORRADOR o ya ha sido publicado previamente");

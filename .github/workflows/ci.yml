@@ -115,6 +115,24 @@ jobs:
           FLOCI_ENDPOINT: http://localhost:4566
           FLOCI_LAMBDA_ENDPOINT: http://172.17.0.1:4566
 
+  dependency-audit:
+    # Integrity of what ships (NIST SP 800-207, tenet 5): a high or critical advisory in a production dependency fails the
+    # pipeline. The development tooling is audited too but only reported: its open advisories (vitest, tinypool) need a
+    # major vitest upgrade and never reach the Lambda functions or the SPA bundle.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Production dependencies (gate)
+        run: npm audit --omit=dev --audit-level=high
+      - name: Development tooling (report only)
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
   browser:
     # The SPA in a real browser against the whole system in Floci: sign-in, donation, sign-out, roles, CSP and CORS, once
     # over the production build and once over the Vite dev server. Same Docker-socket emulator as emulator-e2e, so it
@@ -152,7 +170,7 @@ jobs:
 
   deploy:
     # Only when every gate passed, on the main branch, and when a deploy role (OIDC, no long-lived keys) is configured.
-    needs: [lint-format, typecheck, unit, integration, infra-tests, emulator, iac-scan]
+    needs: [lint-format, typecheck, unit, integration, infra-tests, emulator, iac-scan, dependency-audit]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.AWS_DEPLOY_ROLE_ARN != ''
     runs-on: ubuntu-latest
     permissions:

@@ -79,6 +79,7 @@ Globals:
         IDEMPOTENCY_TABLE: !Ref IdempotencyTable
         AUDIT_TABLE: !Ref AuditTable
         COGNITO_USERINFO_URL: !Sub "https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com/oauth2/userInfo"
+        COGNITO_USER_POOL_ID: !Ref CognitoUserPool
         NODE_OPTIONS: "--enable-source-maps"
 
 Resources:
@@ -585,6 +586,10 @@ Resources:
             - Effect: Allow
               Action: dynamodb:PutItem
               Resource: !GetAtt AuditTable.Arn
+            # Sensitive action: it rereads the person's current groups (a token keeps the ones it was issued with).
+            - Effect: Allow
+              Action: cognito-idp:AdminListGroupsForUser
+              Resource: !GetAtt CognitoUserPool.Arn
       Events:
         ProtectedPatch:
           Type: HttpApi
@@ -651,6 +656,10 @@ Resources:
             - Effect: Allow
               Action: dynamodb:PutItem
               Resource: !GetAtt AuditTable.Arn
+            # Sensitive action: it rereads the person's current groups (a token keeps the ones it was issued with).
+            - Effect: Allow
+              Action: cognito-idp:AdminListGroupsForUser
+              Resource: !GetAtt CognitoUserPool.Arn
       Events:
         ProtectedPost:
           Type: HttpApi
@@ -706,6 +715,10 @@ Resources:
                 - dynamodb:Query
                 - dynamodb:PutItem
               Resource: !GetAtt AuditTable.Arn
+            # Sensitive action: it rereads the person's current groups (a token keeps the ones it was issued with).
+            - Effect: Allow
+              Action: cognito-idp:AdminListGroupsForUser
+              Resource: !GetAtt CognitoUserPool.Arn
       Events:
         ProtectedGet:
           Type: HttpApi
