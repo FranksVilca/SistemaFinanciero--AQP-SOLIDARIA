@@ -112,8 +112,8 @@ describe("full stack: gateway, authorizer, Lambda with its IAM role, DynamoDB an
   afterAll(() => deleteStack(STACK));
 
   describe("before the route scopes are applied: the backend is the second layer", () => {
-    it("deploys the nine API functions and the registration trigger", async () => {
-      expect(countOf(resources, "AWS::Lambda::Function")).toBe(10);
+    it("deploys the API functions, review expiry job and registration trigger", async () => {
+      expect(countOf(resources, "AWS::Lambda::Function")).toBe(13);
 
       const list = await api<unknown[]>("GET", "/v1/projects");
       expect(list.status).toBe(200);
