@@ -278,7 +278,8 @@ paths:
       summary: Cola de donaciones EN_REVISION (solo REVISOR)
       description: >
         Donaciones retenidas por los controles de velocidad, de la más antigua a la más reciente. Nunca incluye el
-        `donorSub`: solo un seudónimo estable (`donorRef`). `nextToken` es opaco: se devuelve tal cual para pedir la
+        `donorSub`: solo un seudónimo estable (`donorRef`). Nunca muestra al revisor sus propias donaciones, así que una
+        página puede traer menos ítems que `limit` aunque haya `nextToken`. `nextToken` es opaco: se devuelve tal cual para pedir la
         página siguiente.
       operationId: listReviews
       security:
@@ -616,7 +617,7 @@ components:
             enum: [HOURLY_AMOUNT, STRUCTURING]
         donorRef:
           type: string
-          description: Seudónimo estable del donante (el mismo que usa la auditoría); nunca el `sub`.
+          description: Seudónimo estable del donante, propio de la cola (`don_…`, distinto del `actorRef` de la auditoría); nunca el `sub`.
 
     ReviewQueuePage:
       type: object

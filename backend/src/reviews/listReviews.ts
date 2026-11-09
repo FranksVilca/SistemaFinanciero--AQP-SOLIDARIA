@@ -1,5 +1,5 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
-import { pseudonymizeActor } from "../audit/recordAuditEvent.js";
 import { withAuth } from "../authz/withAuth.js";
 import {
   AUTHZ_ACTIONS,
@@ -44,6 +44,18 @@ function decodeNextToken(token: string | undefined): Item | undefined {
 const encodeNextToken = (key: Item | undefined): string | undefined =>
   key ? Buffer.from(JSON.stringify(key), "utf8").toString("base64url") : undefined;
 
+const DONOR_REF_PREFIX = "don_";
+const DONOR_REF_HEX_LENGTH = 12;
+// Domain separation: the queue pseudonym never equals the audit actorRef of the same user, so a reviewer cannot link
+// queue entries to audit events.
+const DONOR_REF_DOMAIN = "review-queue:";
+
+/** Stable pseudonym of a donor inside the review queue only. */
+export function donorRefOf(donorSub: string): string {
+  const digest = createHash("sha256").update(DONOR_REF_DOMAIN + donorSub).digest("hex");
+  return DONOR_REF_PREFIX + digest.slice(0, DONOR_REF_HEX_LENGTH);
+}
+
 /** What a reviewer sees of a held donation: never who the donor is, only a stable pseudonym to spot repetitions. */
 function toQueueItem(donation: Item): Item {
   return {
@@ -52,12 +64,12 @@ function toQueueItem(donation: Item): Item {
     amountCents: donation.amountCents,
     createdAt: donation.createdAt,
     ...(Array.isArray(donation.reviewReasons) && { reviewReasons: donation.reviewReasons }),
-    donorRef: pseudonymizeActor(String(donation.donorSub)),
+    donorRef: donorRefOf(String(donation.donorSub)),
   };
 }
 
 export const handler = withAuth(
-  async ({ event, requestId }) => {
+  async ({ event, requestId, principal }) => {
     const limit = readLimit(event.queryStringParameters?.limit);
     const startKey = decodeNextToken(event.queryStringParameters?.nextToken);
 
@@ -66,8 +78,11 @@ export const handler = withAuth(
         TableName: TABLE_NAMES.donations,
         IndexName: DONATIONS_STATUS_INDEX,
         KeyConditionExpression: "#status = :status",
+        // A reviewer who is also a donor never sees their own held donations (nor their reasons). DynamoDB applies
+        // the filter after Limit, so a page may come back shorter than the limit while nextToken still advances.
+        FilterExpression: "donorSub <> :caller",
         ExpressionAttributeNames: { "#status": "status" },
-        ExpressionAttributeValues: { ":status": DONATION_STATUS.underReview },
+        ExpressionAttributeValues: { ":status": DONATION_STATUS.underReview, ":caller": principal?.sub },
         ScanIndexForward: true,
         Limit: limit,
         ...(startKey && { ExclusiveStartKey: startKey }),

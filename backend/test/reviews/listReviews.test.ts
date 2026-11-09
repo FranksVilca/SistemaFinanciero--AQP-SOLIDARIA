@@ -9,7 +9,7 @@ vi.mock("../../src/audit/recordAuditEvent.js", async (importOriginal) => ({
 
 import { pseudonymizeActor } from "../../src/audit/recordAuditEvent.js";
 import { replaceGroupsLookup } from "../../src/authz/currentGroups.js";
-import { handler as listReviews } from "../../src/reviews/listReviews.js";
+import { donorRefOf, handler as listReviews } from "../../src/reviews/listReviews.js";
 import { buildEvent, identityFor, type TestIdentity } from "../integration/helpers/events.js";
 import { FakeDynamo } from "../donations/helpers/fakeDynamo.js";
 
@@ -100,10 +100,30 @@ describe("the review queue", () => {
       amountCents: item.amountCents,
       createdAt: item.createdAt,
       reviewReasons: ["HOURLY_AMOUNT"],
-      donorRef: pseudonymizeActor(String(item.donorSub)),
+      donorRef: donorRefOf(String(item.donorSub)),
     });
     expect(response.body).not.toContain(String(item.donorSub));
     expect(response.body).not.toContain("donorSub");
+  });
+
+  it("leaves out the reviewer's own donations in the query itself", async () => {
+    serve([]);
+    const reviewer = identityFor("REVISOR");
+
+    await list(reviewer);
+
+    expect(queries[0]).toMatchObject({
+      FilterExpression: "donorSub <> :caller",
+      ExpressionAttributeValues: { ":status": "EN_REVISION", ":caller": reviewer.sub },
+    });
+  });
+
+  it("uses a donor pseudonym of its own, distinct from the audit actorRef", () => {
+    const sub = `donor-${randomUUID()}`;
+
+    expect(donorRefOf(sub)).toMatch(/^don_[0-9a-f]{12}$/);
+    expect(donorRefOf(sub)).not.toBe(pseudonymizeActor(sub));
+    expect(donorRefOf(sub).slice(4)).not.toBe(pseudonymizeActor(sub).slice(4));
   });
 
   it("paginates with a limit and an opaque next token", async () => {

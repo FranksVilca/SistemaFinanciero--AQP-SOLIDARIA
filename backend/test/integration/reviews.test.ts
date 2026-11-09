@@ -7,6 +7,7 @@ import { handler as getProjectStats } from "../../src/projects/getProjectStats.j
 import { handler as expireReviews } from "../../src/reviews/expireReviews.js";
 import { handler as listReviews } from "../../src/reviews/listReviews.js";
 import { handler as reviewDonation } from "../../src/reviews/reviewDonation.js";
+import { pseudonymizeActor } from "../../src/audit/recordAuditEvent.js";
 import { buildEvent, identityFor, parseBody, type TestIdentity } from "./helpers/events.js";
 import {
   clearAllTables,
@@ -83,7 +84,7 @@ describe("human review of the donations held by the velocity controls", () => {
     const history = await getMyDonations(buildEvent({ identity: donor }));
 
     expect(parseBody<{ items: QueueItem[] }>(response).items).toEqual([
-      expect.objectContaining({ donationId, reviewReasons: ["STRUCTURING"], donorRef: expect.stringMatching(/^usr_/) }),
+      expect.objectContaining({ donationId, reviewReasons: ["STRUCTURING"], donorRef: expect.stringMatching(/^don_/) }),
     ]);
     expect(response.body).not.toContain(donor.sub);
     expect(history.body).not.toContain("reviewReasons");
@@ -98,11 +99,28 @@ describe("human review of the donations held by the velocity controls", () => {
     expect(approved.statusCode).toBe(200);
     expect(confirmed.statusCode).toBe(200);
     expect(parseBody(confirmed).status).toBe("CONFIRMADA_SIMULADA");
+    for (const field of ["reviewReasons", "reviewMotivo", "reviewedBy"]) expect(confirmed.body).not.toContain(field);
     expect((await readProject(projectId))?.confirmedAmountCents).toBe(NEAR_MAX_CENTS);
     expect(await queue(reviewer)).toEqual([]);
     const [decision] = (await readAllAuditEvents()).filter((event) => event.eventType === "REVIEW_DECISION");
     expect(decision).toMatchObject({ outcome: "SUCCESS", reason: "APROBAR", resourceRef: `donation:${donationId}` });
     expect(JSON.stringify(decision)).not.toContain(reviewer.sub);
+    const reviewSuccesses = (await readAllAuditEvents()).filter(
+      (event) => event.action === "ReviewDonation" && event.outcome === "SUCCESS"
+    );
+    expect(reviewSuccesses).toHaveLength(1);
+  });
+
+  it("never shows a reviewer who is also a donor their own held donations", async () => {
+    const both: TestIdentity = { sub: `both-${randomUUID()}`, groups: ["DONANTE", "REVISOR"] };
+    const donationId = await heldDonationOf(both, projectId);
+
+    const own = await queue(both);
+    const [listed] = await queue(reviewer);
+
+    expect(own).toEqual([]);
+    expect(listed).toMatchObject({ donationId });
+    expect(listed.donorRef).not.toBe(pseudonymizeActor(both.sub));
   });
 
   it("rejects a held donation for good: it never counts toward the project total", async () => {

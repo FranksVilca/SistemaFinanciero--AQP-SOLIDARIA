@@ -7,6 +7,7 @@ import { DYNAMO_ERROR, isDynamoError } from "../shared/dynamoErrors.js";
 import { ConflictError, NotFoundError } from "../shared/errors.js";
 import { logInfo } from "../shared/logger.js";
 import { parseJsonBody, requirePathParameter } from "../shared/request.js";
+import { toDonorView } from "../shared/donationView.js";
 import { buildSuccessResponse } from "../shared/response.js";
 import { SimulateDonationSchema, type SimulateDonationInput } from "../shared/schemas.js";
 
@@ -88,7 +89,7 @@ export const handler = withAuth<Donation>(
 
     const newStatus = action === "CONFIRMAR" ? DONATION_STATUS.confirmed : DONATION_STATUS.rejected;
     logInfo("Donation transitioned", { requestId, donationId: donation.donationId, newStatus });
-    return buildSuccessResponse({ ...donation, status: newStatus, updatedAt: now });
+    return buildSuccessResponse(toDonorView({ ...donation, status: newStatus, updatedAt: now }));
   },
   {
     action: AUTHZ_ACTIONS.simulateDonation,
