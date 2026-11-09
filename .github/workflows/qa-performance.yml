@@ -1,0 +1,43 @@
+name: QA Performance Smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "backend/test/performance/**"
+      - "backend/scripts/performanceLocal.ts"
+      - "backend/package.json"
+      - ".github/workflows/qa-performance.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  performance-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Start isolated Floci
+        run: docker compose -f backend/test/floci/docker-compose.lambda.yml up -d --wait --wait-timeout 90
+      - name: Exercise k6 with 50 projects and negative checks
+        run: npm run test:performance:local
+        env:
+          PERF_ITERATIONS: 10
+          FLOCI_ENDPOINT: http://localhost:4566
+          FLOCI_LAMBDA_ENDPOINT: http://172.17.0.1:4566
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-smoke
+          path: .local/performance/*.json
+          include-hidden-files: true
+      - name: Stop emulator
+        if: always()
+        run: docker compose -f backend/test/floci/docker-compose.lambda.yml down
