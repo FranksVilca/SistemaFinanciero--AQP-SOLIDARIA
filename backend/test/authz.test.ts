@@ -6,7 +6,7 @@ import {
   violatesSeparationOfDuties,
   type PolicyAuthorizer,
 } from "../src/authz/evaluateAuthz.js";
-import { AUTHZ_ACTIONS } from "../src/shared/constants.js";
+import { AUTHZ_ACTIONS, SENSITIVE_ACTIONS } from "../src/shared/constants.js";
 
 const authorizer = new EmbeddedPolicyAuthorizer();
 const donor = { sub: "donor-sub-1", groups: ["DONANTE"] };
@@ -152,5 +152,59 @@ describe("separation of duties", () => {
       const decision = await authorize({ principal: combined, action, resourceType: "Donation" }, authorizer);
       expect(decision).toEqual({ allowed: false, reason: "SEPARATION_OF_DUTIES" });
     }
+  });
+});
+
+describe("review of donations held by the velocity controls", () => {
+  const reviewActions = [AUTHZ_ACTIONS.listReviews, AUTHZ_ACTIONS.reviewDonation];
+
+  it.each(reviewActions)("allows a REVISOR to %s", async (action) => {
+    const reviewer = { sub: "reviewer-1", groups: ["REVISOR"] };
+
+    expect(await authorize({ principal: reviewer, action, resourceType: "Donation" }, authorizer)).toEqual({
+      allowed: true,
+    });
+  });
+
+  it.each([
+    ["DONANTE", AUTHZ_ACTIONS.listReviews],
+    ["DONANTE", AUTHZ_ACTIONS.reviewDonation],
+    ["GESTOR", AUTHZ_ACTIONS.listReviews],
+    ["GESTOR", AUTHZ_ACTIONS.reviewDonation],
+    ["AUDITOR", AUTHZ_ACTIONS.listReviews],
+    ["AUDITOR", AUTHZ_ACTIONS.reviewDonation],
+  ])("denies %s the action %s as ROLE", async (group, action) => {
+    const decision = await authorize(
+      { principal: { sub: "someone", groups: [group] }, action, resourceType: "Donation" },
+      authorizer
+    );
+
+    expect(decision).toEqual({ allowed: false, reason: "ROLE" });
+  });
+
+  it.each(reviewActions)("denies an AUDITOR who is also REVISOR the action %s", async (action) => {
+    const combined = { sub: "sub-2", groups: ["AUDITOR", "REVISOR"] };
+
+    expect(violatesSeparationOfDuties(combined.groups)).toBe(true);
+    expect(await authorize({ principal: combined, action, resourceType: "Donation" }, authorizer)).toEqual({
+      allowed: false,
+      reason: "SEPARATION_OF_DUTIES",
+    });
+  });
+
+  it("lets a REVISOR also be GESTOR or DONANTE: the conflicts are decided per donation", async () => {
+    const reviewer = { sub: "sub-3", groups: ["REVISOR", "GESTOR", "DONANTE"] };
+
+    expect(violatesSeparationOfDuties(reviewer.groups)).toBe(false);
+    expect(
+      await authorize(
+        { principal: reviewer, action: AUTHZ_ACTIONS.reviewDonation, resourceType: "Donation" },
+        authorizer
+      )
+    ).toEqual({ allowed: true });
+  });
+
+  it("revalidates the session and the groups of a review decision", () => {
+    expect(SENSITIVE_ACTIONS).toContain(AUTHZ_ACTIONS.reviewDonation);
   });
 });

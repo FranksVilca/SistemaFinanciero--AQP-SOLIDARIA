@@ -22,6 +22,7 @@ import {
   TooManyRequestsError,
   ValidationError,
 } from "../shared/errors.js";
+import { toDonorView } from "../shared/donationView.js";
 import { hashPayload } from "../shared/hash.js";
 import { logError, logInfo, logWarn } from "../shared/logger.js";
 import { parseJsonBody } from "../shared/request.js";
@@ -85,7 +86,7 @@ async function replayIdempotentRequest(idempotencyPk: string, payloadHash: strin
   const { Item: donation } = await docClient.send(
     new GetCommand({ TableName: TABLE_NAMES.donations, Key: { donationId: record.donationId }, ConsistentRead: true })
   );
-  return buildSuccessResponse(donation, CREATED);
+  return buildSuccessResponse(donation && toDonorView(donation), CREATED);
 }
 
 interface DonationRequest {
@@ -123,13 +124,16 @@ async function auditVelocity(
 
 function buildDonation(request: DonationRequest, assessment: Assessment): Donation {
   const now = new Date().toISOString();
+  const isHeld = assessment.reasons.length > 0;
   return {
     donationId: randomUUID(),
     projectId: request.projectId,
     donorSub: request.donorSub,
     amountCents: request.amountCents,
     currency: CURRENCY,
-    status: assessment.reasons.length > 0 ? DONATION_STATUS.underReview : DONATION_STATUS.pending,
+    status: isHeld ? DONATION_STATUS.underReview : DONATION_STATUS.pending,
+    // Why it is held: the reviewer sees it in the queue (GET /v1/reviews); the donor never does.
+    ...(isHeld && { reviewReasons: assessment.reasons }),
     createdAt: now,
     updatedAt: now,
   };
@@ -235,7 +239,7 @@ async function createWithVelocityControls(request: DonationRequest): Promise<Api
       const { donation, assessment } = await tryCreate(request);
       logInfo("Donation intent created", { requestId: request.requestId, donationId: donation.donationId });
       await flagIfSuspicious(request, donation, assessment);
-      return buildSuccessResponse(donation, CREATED);
+      return buildSuccessResponse(toDonorView(donation), CREATED);
     } catch (error) {
       if (!isDynamoError(error, DYNAMO_ERROR.transactionCanceled)) throw error;
       const answer = await resolveCancellation(request, error);

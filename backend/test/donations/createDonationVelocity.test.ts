@@ -139,4 +139,20 @@ describe("hourly review", () => {
       expect.objectContaining({ reason: "STRUCTURING", details: expect.objectContaining({ nearMaxCount: 3 }) }),
     ]);
   });
+
+  it("stores why the donation is held, so the review queue can show it, and never tells the donor", async () => {
+    const donor = identityFor("DONANTE");
+    for (let index = 0; index < 2; index++) await donate(donor, NEAR_MAX_CENTS);
+
+    const flagged = await donate(donor, NEAR_MAX_CENTS);
+    const donationId = JSON.parse(flagged.body).donationId as string;
+
+    expect(dynamo.get(TABLE_NAMES.donations, { donationId })).toMatchObject({
+      status: "EN_REVISION",
+      reviewReasons: ["STRUCTURING"],
+    });
+    expect(JSON.parse(flagged.body)).not.toHaveProperty("reviewReasons");
+    const pending = dynamo.items(TABLE_NAMES.donations).filter((item) => item.status === "PENDIENTE_SIMULACION");
+    for (const item of pending) expect(item).not.toHaveProperty("reviewReasons");
+  });
 });

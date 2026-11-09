@@ -39,6 +39,7 @@
 | **Information Disclosure (Filtración)** | Acceso a donaciones privadas de otros usuarios (BOLA) | Validación de ownership `donorSub === jwt.sub` en Lambda y consultas aisladas por GSI | T09, T12 |
 | **Denial of Service (Denegación)** | Replays concurrentes para duplicar confirmaciones | `TransactWriteItems` con condición atómica; 10 solicitudes concurrentes dejan 1 éxito y 9 conflictos | T06, T07, T08 |
 | **Denial of Service / fraude** | Bot que registra ráfagas de donaciones; fraccionamiento de un monto grande en donaciones pequeñas | Contadores atómicos por donante en la tabla de idempotencia: máximo 5 donaciones nuevas por minuto (HTTP 429, evento `DONATION_RATE_LIMITED`) y revisión horaria: más de S/ 5,000 o 3 donaciones de al menos el 90% del máximo dejan la donación `EN_REVISION` (evento `SUSPICIOUS_VELOCITY`), que no puede confirmarse | `test/integration/velocity.test.ts`, `test/donations/` |
+| **Tampering / Elevation of Privilege** | Revisor que aprueba su propia donación o la de un proyecto que creó; dos revisores que deciden a la vez | Cuatro ojos: rol REVISOR (MFA, acción sensible con revalidación de sesión y grupos), 403 `CONFLICT_OF_INTEREST` si es el donante o el creador (`createdBy`); AUDITOR no se combina con REVISOR; escritura condicional `status = EN_REVISION` (una sola decisión gana, la otra recibe 409); `REVIEW_DECISION` auditado | `test/reviews/`, `test/integration/reviews.test.ts` |
 | **Elevation of Privilege (Escalación)** | Donante intentando publicar o crear proyectos | EnforceAuthz valida `cognito:groups` en backend; botones ocultos en UI son solo conveniencia UX | T03 |
 
 ## Límites de los controles de velocidad
@@ -46,4 +47,5 @@
 - Las ventanas son fijas (minuto y hora UTC): en el borde de una ventana un donante puede registrar hasta el doble del límite en poco tiempo (5 al final de un minuto y 5 al inicio del siguiente).
 - Los controles son por cuenta (`sub`): no detectan a una misma persona que reparte las donaciones entre varias cuentas.
 - Los umbrales (5 por minuto, S/ 5,000 por hora, 3 donaciones cercanas al máximo) son ejemplos académicos y se cambian con parámetros de la plantilla.
-- `EN_REVISION` solo retiene la donación: no existe todavía un flujo para que un revisor la libere o la rechace, y el reporte a la UIF-Perú u otra autoridad queda fuera del alcance.
+- `EN_REVISION` retiene la donación hasta que un REVISOR la aprueba o la rechaza (HU-13); si nadie la revisa en `ReviewExpiryDays` (7 días), el job diario la rechaza como `RECHAZADA_REVISION`. El reporte a la UIF-Perú u otra autoridad queda fuera del alcance.
+- Separación de funciones de la revisión: AUDITOR no se combina con ningún rol. REVISOR sí puede ser GESTOR o DONANTE; el conflicto se bloquea por donación (propia o de un proyecto propio), no por rol. Dos revisores coludidos siguen pudiendo aprobarse mutuamente: lo mitiga la auditoría (`REVIEW_DECISION`), no el sistema.

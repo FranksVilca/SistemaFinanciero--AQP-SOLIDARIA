@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DONATION_MAX_CENTS } from "./constants.js";
+import { DONATION_MAX_CENTS, REVIEW_MOTIVO_MAX_LENGTH, REVIEW_MOTIVO_MIN_LENGTH } from "./constants.js";
 
 export const CurrencySchema = z.literal("PEN");
 
@@ -10,6 +10,7 @@ export const DonationStatusSchema = z.enum([
   "CONFIRMADA_SIMULADA",
   "RECHAZADA_SIMULADA",
   "EN_REVISION",
+  "RECHAZADA_REVISION",
 ]);
 
 export const AuditOutcomeSchema = z.enum(["SUCCESS", "DENIED", "FAILED"]);
@@ -45,8 +46,19 @@ export const SimulateDonationSchema = z.object({
   action: z.enum(["CONFIRMAR", "RECHAZAR"]),
 });
 
+export const ReviewDonationSchema = z.object({
+  decision: z.enum(["APROBAR", "RECHAZAR"], "La decisión debe ser APROBAR o RECHAZAR"),
+  motivo: z
+    .string("El motivo es obligatorio")
+    .trim()
+    .min(REVIEW_MOTIVO_MIN_LENGTH, `El motivo debe tener al menos ${REVIEW_MOTIVO_MIN_LENGTH} caracteres`)
+    .max(REVIEW_MOTIVO_MAX_LENGTH, `El motivo no puede exceder ${REVIEW_MOTIVO_MAX_LENGTH} caracteres`),
+});
+
 export const IdempotencyHeaderSchema = z.string().uuid("Idempotency-Key debe ser un UUID v4 válido");
 
 export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
 export type CreateDonationInput = z.infer<typeof CreateDonationSchema>;
 export type SimulateDonationInput = z.infer<typeof SimulateDonationSchema>;
+export type ReviewDonationInput = z.infer<typeof ReviewDonationSchema>;
+export type ReviewDecision = ReviewDonationInput["decision"];

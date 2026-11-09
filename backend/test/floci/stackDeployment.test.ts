@@ -14,9 +14,10 @@ import { countOf, deleteStack, deployStack, physicalIdOf, productionEquivalentTe
  * asserted in test/infra and test/floci/iamEnforcement.test.ts.
  */
 
-// Nine API functions (one route each) and the Cognito trigger that makes whoever registers a donor.
-const FUNCTIONS_IN_ACADEMIC = 10;
-const ROUTES_IN_ACADEMIC = 9;
+// Eleven API functions (one route each), the Cognito trigger that makes whoever registers a donor and the scheduled
+// job that expires the reviews nobody resolved.
+const FUNCTIONS_IN_ACADEMIC = 13;
+const ROUTES_IN_ACADEMIC = 11;
 const LOG_RETENTION_DAYS = 14;
 
 const config = {

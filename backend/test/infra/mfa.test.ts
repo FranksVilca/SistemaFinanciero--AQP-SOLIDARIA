@@ -33,7 +33,7 @@ describe.each(STAGES)("identity configuration in stage %s", (stage) => {
   it("protects every non-public route with scopes of the access token", () => {
     const protectedRoutes = lambdaFunctions(template)
       .flatMap(([, definition]) => eventsOf(definition))
-      .filter(([, event]) => JSON.stringify(event).includes("NONE") === false);
+      .filter(([, event]) => event.Type === "HttpApi" && JSON.stringify(event).includes("NONE") === false);
 
     expect(protectedRoutes.length).toBeGreaterThan(0);
     for (const [, event] of protectedRoutes) {

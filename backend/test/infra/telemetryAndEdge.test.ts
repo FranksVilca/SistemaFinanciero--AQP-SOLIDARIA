@@ -89,6 +89,8 @@ describe.each(STAGES)("telemetry and edge configuration in stage %s", (stage) =>
   it("protects every non-public route with a scope and publishes exactly the public routes without authorizer", () => {
     const noAuthorizerRoutes = lambdaFunctions(template)
       .flatMap(([, definition]) => eventsOf(definition))
+      // Routes only: a scheduled job's event is not an HTTP route and has no authorizer to compare.
+      .filter(([, event]) => event.Type === "HttpApi")
       .filter(([, event]) => textOf(propertiesOf(event).Auth).includes("NONE"))
       .map(([, event]) => `${propertiesOf(event).Method} ${propertiesOf(event).Path}`);
 

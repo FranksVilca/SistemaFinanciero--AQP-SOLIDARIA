@@ -37,6 +37,8 @@ const ROLE_BY_ACTION: Partial<Record<AuthzAction, string>> = {
   [AUTHZ_ACTIONS.simulateDonation]: ROLES.donor,
   [AUTHZ_ACTIONS.viewMyDonations]: ROLES.donor,
   [AUTHZ_ACTIONS.viewAudit]: ROLES.auditor,
+  [AUTHZ_ACTIONS.listReviews]: ROLES.reviewer,
+  [AUTHZ_ACTIONS.reviewDonation]: ROLES.reviewer,
 };
 
 const KNOWN_ROLES: readonly string[] = Object.values(ROLES);

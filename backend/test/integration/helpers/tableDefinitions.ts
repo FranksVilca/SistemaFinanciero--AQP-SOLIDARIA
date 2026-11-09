@@ -29,12 +29,22 @@ export function buildTableDefinitions(names: TableNames): CreateTableCommandInpu
     {
       TableName: names.donations,
       BillingMode: "PAY_PER_REQUEST",
-      AttributeDefinitions: [stringAttribute("donationId"), stringAttribute("donorSub"), stringAttribute("createdAt")],
+      AttributeDefinitions: [
+        stringAttribute("donationId"),
+        stringAttribute("donorSub"),
+        stringAttribute("status"),
+        stringAttribute("createdAt"),
+      ],
       KeySchema: [keyElement("donationId", "HASH")],
       GlobalSecondaryIndexes: [
         {
           IndexName: "donorSub-createdAt-index",
           KeySchema: [keyElement("donorSub", "HASH"), keyElement("createdAt", "RANGE")],
+          Projection: { ProjectionType: "ALL" },
+        },
+        {
+          IndexName: "status-createdAt-index",
+          KeySchema: [keyElement("status", "HASH"), keyElement("createdAt", "RANGE")],
           Projection: { ProjectionType: "ALL" },
         },
       ],

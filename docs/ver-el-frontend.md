@@ -23,6 +23,7 @@ lanza Vite. Cuando termine, abre **http://localhost:3000**.
 | donante@aqpsolidaria.pe    | DONANTE | `Passw0rd!x`  |
 | gestor@aqpsolidaria.pe     | GESTOR  | `Passw0rd!x`  |
 | auditor@aqpsolidaria.pe    | AUDITOR | `Passw0rd!x`  |
+| revisor@aqpsolidaria.pe    | REVISOR | `Passw0rd!x`  |
 
 ### Paso obligatorio: confiar en el certificado del emulador
 

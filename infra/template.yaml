@@ -69,6 +69,13 @@ Parameters:
     MinValue: 1
     Description: >
       Cantidad de donaciones de al menos el 90% del máximo en una hora a partir de la cual la donación queda EN_REVISION.
+  ReviewExpiryDays:
+    Type: Number
+    Default: 7
+    MinValue: 1
+    Description: >
+      Días que una donación puede quedar EN_REVISION sin que un REVISOR la resuelva; después el job diario la rechaza
+      como RECHAZADA_REVISION ("Vencida sin revisión").
 
 Conditions:
   IsAcademicStage: !Equals [!Ref StageName, 'academic']
@@ -146,6 +153,8 @@ Resources:
           AttributeType: S
         - AttributeName: donorSub
           AttributeType: S
+        - AttributeName: status
+          AttributeType: S
         - AttributeName: createdAt
           AttributeType: S
       KeySchema:
@@ -155,6 +164,16 @@ Resources:
         - IndexName: donorSub-createdAt-index
           KeySchema:
             - AttributeName: donorSub
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        # Cola de revisión (EN_REVISION, más antiguas primero) y job de vencimiento. CloudFormation agrega un solo
+        # índice por actualización: no añadir otro en el mismo despliegue.
+        - IndexName: status-createdAt-index
+          KeySchema:
+            - AttributeName: status
               KeyType: HASH
             - AttributeName: createdAt
               KeyType: RANGE
@@ -401,6 +420,14 @@ Resources:
       UserPoolId: !Ref CognitoUserPool
       Description: Grupo para auditores de seguridad (el MFA TOTP es obligatorio para todo el pool)
 
+  # Four eyes: a reviewer never decides on their own donation or on one to a project they created (checked per request).
+  CognitoGroupRevisor:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: REVISOR
+      UserPoolId: !Ref CognitoUserPool
+      Description: Grupo para revisores de donaciones retenidas EN_REVISION (el MFA TOTP es obligatorio para todo el pool)
+
   CognitoUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
@@ -445,6 +472,8 @@ Resources:
           ScopeDescription: Permiso para consultar donaciones propias
         - ScopeName: audit.read
           ScopeDescription: Permiso para consultar registros de auditoría
+        - ScopeName: donations.review
+          ScopeDescription: Permiso para revisar donaciones retenidas EN_REVISION
 
   CognitoUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
@@ -473,6 +502,7 @@ Resources:
         - api/donations.write
         - api/donations.read
         - api/audit.read
+        - api/donations.review
       SupportedIdentityProviders:
         - COGNITO
       # The deployed SPA is served by CloudFront; localhost is only allowed in the academic stage.
@@ -775,6 +805,110 @@ Resources:
             Auth:
               AuthorizationScopes:
                 - api/donations.read
+
+  # ============================================================================
+  # LAMBDA FUNCTIONS (Módulo Revisión de donaciones EN_REVISION)
+  # ============================================================================
+  ListReviewsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/dist/
+      Handler: reviews/listReviews.handler
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:Query
+              # Query requires the table ARN (required resource type) and accepts the index ARN.
+              Resource:
+                - !GetAtt DonationsTable.Arn
+                - !Sub "${DonationsTable.Arn}/index/status-createdAt-index"
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AuditTable.Arn
+      Events:
+        ProtectedGet:
+          Type: HttpApi
+          Properties:
+            Path: /v1/reviews
+            Method: GET
+            ApiId: !Ref HttpApi
+            Auth:
+              AuthorizationScopes:
+                - api/donations.review
+
+  ReviewDonationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/dist/
+      Handler: reviews/reviewDonation.handler
+      Environment:
+        Variables:
+          # The pool whose groups this function rereads (a token keeps the groups it was issued with).
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            # Reads who created the project (conflict of interest).
+            - Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt ProjectsTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt DonationsTable.Arn
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AuditTable.Arn
+            # Sensitive action: it rereads the person's current groups (a token keeps the ones it was issued with).
+            - Effect: Allow
+              Action: cognito-idp:AdminListGroupsForUser
+              Resource: !GetAtt CognitoUserPool.Arn
+      Events:
+        ProtectedPost:
+          Type: HttpApi
+          Properties:
+            Path: /v1/donations/{donationId}/review
+            Method: POST
+            ApiId: !Ref HttpApi
+            Auth:
+              AuthorizationScopes:
+                - api/donations.review
+
+  # Scheduled job, not an API route: once a day it rejects the donations nobody reviewed within ReviewExpiryDays.
+  # A SAM Schedule event is an EventBridge rule (within the free tier at one invocation per day).
+  ExpireReviewsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/dist/
+      Handler: reviews/expireReviews.handler
+      # Room for one bounded run (at most 100 donations, see REVIEW_EXPIRY_MAX_PER_RUN).
+      Timeout: 60
+      Environment:
+        Variables:
+          REVIEW_EXPIRY_DAYS: !Ref ReviewExpiryDays
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:Query
+              # Query requires the table ARN (required resource type) and accepts the index ARN.
+              Resource:
+                - !GetAtt DonationsTable.Arn
+                - !Sub "${DonationsTable.Arn}/index/status-createdAt-index"
+            - Effect: Allow
+              Action: dynamodb:UpdateItem
+              Resource: !GetAtt DonationsTable.Arn
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AuditTable.Arn
+      Events:
+        DailyExpiry:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 day)
+            Enabled: true
 
   # ============================================================================
   # LAMBDA FUNCTIONS (Módulo Auditoría)

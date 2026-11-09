@@ -1,4 +1,4 @@
-import { GetCommand, PutCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { vi } from "vitest";
 import { docClient } from "../../../src/shared/dynamo.js";
 
@@ -140,6 +140,26 @@ export class FakeDynamo {
     return () => this.put(update.TableName, next, Object.keys(update.Key));
   }
 
+  /** Called before every single-item update (for example to let a concurrent writer change the item first). */
+  onUpdate: () => void = () => undefined;
+  /** Answers a Query; tests that need one provide it (the fake does not evaluate key conditions). */
+  onQuery: (input: QueryCommand["input"]) => { Items?: Item[]; LastEvaluatedKey?: Item } = () => {
+    throw new Error("FakeDynamo: this test does not expect a Query");
+  };
+  readonly updates: Array<NonNullable<TransactItem["Update"]>> = [];
+
+  /** A single UpdateItem: applied when its condition holds, ConditionalCheckFailedException otherwise. */
+  update(input: NonNullable<TransactItem["Update"]>): Item {
+    this.updates.push(input);
+    this.onUpdate();
+    const write = this.prepare({ Update: input });
+    if (!write) {
+      throw Object.assign(new Error("The conditional request failed"), { name: "ConditionalCheckFailedException" });
+    }
+    write();
+    return this.get(input.TableName, input.Key)!;
+  }
+
   /** Routes every docClient.send of the handlers to this fake. */
   install(): void {
     vi.spyOn(docClient, "send").mockImplementation((async (command: unknown) => {
@@ -151,6 +171,11 @@ export class FakeDynamo {
         this.transact(command.input.TransactItems as TransactItem[]);
         return {};
       }
+      if (command instanceof UpdateCommand) {
+        const updated = this.update(command.input as NonNullable<TransactItem["Update"]>);
+        return command.input.ReturnValues === "ALL_NEW" ? { Attributes: updated } : {};
+      }
+      if (command instanceof QueryCommand) return this.onQuery(command.input);
       if (command instanceof PutCommand) return {};
       throw new Error(`FakeDynamo does not support ${String((command as object).constructor.name)}`);
     }) as never);

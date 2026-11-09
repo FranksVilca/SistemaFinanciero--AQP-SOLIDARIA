@@ -20,17 +20,18 @@ Una fundación peruana administra proyectos sociales (educación, alimentación 
 
 ### Roles y matriz de permisos
 
-| Función | Visitante | Donante | Gestor | Auditor |
-|---|:---:|:---:|:---:|:---:|
-| Ver proyectos publicados y totales agregados | Sí | Sí | Sí | Sí |
-| Crear intención de donación simulada | No | Sí | No | No |
-| Simular confirmación de donación propia (solo stage académico) | No | Sí | No | No |
-| Ver historial propio | No | Sí | No | No |
-| Crear/editar/publicar proyectos | No | No | Sí | No |
-| Consultar eventos de auditoría | No | No | No | Sí |
-| **MFA obligatorio** | — | Opcional | **Sí** | **Sí** |
+| Función | Visitante | Donante | Gestor | Auditor | Revisor |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Ver proyectos publicados y totales agregados | Sí | Sí | Sí | Sí | Sí |
+| Crear intención de donación simulada | No | Sí | No | No | No |
+| Simular confirmación de donación propia (solo stage académico) | No | Sí | No | No | No |
+| Ver historial propio | No | Sí | No | No | No |
+| Crear/editar/publicar proyectos | No | No | Sí | No | No |
+| Consultar eventos de auditoría | No | No | No | Sí | No |
+| Revisar donaciones `EN_REVISION` (aprobar o rechazar) | No | No | No | No | Sí |
+| **MFA obligatorio** | — | Opcional | **Sí** | **Sí** | **Sí** |
 
-Los roles se representan como **grupos de Cognito** (`DONANTE`, `GESTOR`, `AUDITOR`) y se leen del claim `cognito:groups` del access token. Los permisos se verifican **siempre en backend**, nunca solo ocultando botones. Usuarios y proyectos son ficticios.
+Los roles se representan como **grupos de Cognito** (`DONANTE`, `GESTOR`, `AUDITOR`, `REVISOR`) y se leen del claim `cognito:groups` del access token. Los permisos se verifican **siempre en backend**, nunca solo ocultando botones. Usuarios y proyectos son ficticios.
 
 ## 2. Épicas e historias de usuario
 
@@ -85,7 +86,7 @@ Prioridad: **MVP** = obligatorio; **Extensión** = puntos adicionales, no necesa
 - **CA-06.1:** El endpoint de simulación permite pasar una donación **propia** de `PENDIENTE_SIMULACION` a `CONFIRMADA_SIMULADA` o `RECHAZADA_SIMULADA`, y **solo se despliega en el stage académico** (condición en la plantilla SAM); en otro stage la ruta no existe.
 - **CA-06.2:** Solo la primera transición válida modifica el monto confirmado; solicitudes repetidas o concurrentes no alteran el total (HTTP 409 en transición inválida).
 - **CA-06.3:** Una donación rechazada no incrementa cifras agregadas.
-- **CA-06.5:** Una donación `EN_REVISION` no puede confirmarse ni rechazarse (HTTP 409), por lo que nunca suma al proyecto.
+- **CA-06.5:** Una donación `EN_REVISION` no puede confirmarse ni rechazarse (HTTP 409), por lo que nunca suma al proyecto mientras un REVISOR no la apruebe (HU-13).
 - **CA-06.4:** La UI muestra **«Simulación académica: no se ha realizado ningún cobro»**.
 
 **HU-07 — Ver historial propio (MVP).** Como donante quiero consultar mis donaciones simuladas para verificar su estado.
@@ -105,6 +106,14 @@ Prioridad: **MVP** = obligatorio; **Extensión** = puntos adicionales, no necesa
 
 - **CA-09.1:** La suma excluye pendientes y rechazadas; los montos se muestran en formato PEN.
 - **CA-09.2:** La vista pública no expone identificadores de donantes ni registros individuales.
+
+**HU-13 — Revisar donaciones retenidas (MVP).** Como revisor quiero aprobar o rechazar las donaciones que los controles de velocidad dejaron `EN_REVISION`, para que ninguna quede retenida indefinidamente y ninguna sospechosa sume al proyecto.
+
+- **CA-13.1:** Solo REVISOR (con MFA, scope `api/donations.review`) consulta la cola `GET /v1/reviews`: donaciones `EN_REVISION`, de la más antigua a la más reciente, paginadas (`limit`, `nextToken` opaco), con el motivo de la retención y un seudónimo del donante; nunca el `donorSub`.
+- **CA-13.2:** `POST /v1/donations/{donationId}/review` exige `decision` (`APROBAR` o `RECHAZAR`) y `motivo` (10 a 500 caracteres tras recortar espacios). `APROBAR` deja la donación en `PENDIENTE_SIMULACION` (el donante puede confirmarla); `RECHAZAR` la deja en `RECHAZADA_REVISION`, estado terminal que nunca suma al proyecto.
+- **CA-13.3:** La decisión solo se aplica si la donación sigue `EN_REVISION` (escritura condicional); si ya cambió responde 409. De dos decisiones concurrentes, exactamente una tiene éxito.
+- **CA-13.4 (cuatro ojos):** un REVISOR no decide sobre una donación propia ni sobre una de un proyecto que creó (403, auditado como `CONFLICT_OF_INTEREST`); AUDITOR y REVISOR no se combinan. Es una acción sensible: se revalidan la sesión y los grupos.
+- **CA-13.5:** Cada decisión registra `REVIEW_DECISION` (sin el motivo). Un job diario rechaza como `RECHAZADA_REVISION` («Vencida sin revisión») las donaciones con más de `ReviewExpiryDays` (7 por defecto) en revisión y registra `REVIEW_EXPIRED` con actor `system`.
 
 **HU-10 — Consultar auditoría (Extensión).** Como auditor quiero consultar acciones críticas para investigar desviaciones.
 
@@ -167,7 +176,7 @@ Prioridad: **MVP** = obligatorio; **Extensión** = puntos adicionales, no necesa
 ## 4. Modelo de datos lógico mínimo
 
 - `Project`: `projectId`, `title`, `description`, `goalAmountCents`, `confirmedAmountCents`, `currency=PEN`, `status` (`BORRADOR`, `PUBLICADO`), `createdAt`, `updatedAt`.
-- `Donation`: `donationId`, `projectId`, `donorSub`, `amountCents`, `currency=PEN`, `status` (`PENDIENTE_SIMULACION`, `CONFIRMADA_SIMULADA`, `RECHAZADA_SIMULADA`, `EN_REVISION`), `createdAt`, `updatedAt`.
+- `Donation`: `donationId`, `projectId`, `donorSub`, `amountCents`, `currency=PEN`, `status` (`PENDIENTE_SIMULACION`, `CONFIRMADA_SIMULADA`, `RECHAZADA_SIMULADA`, `EN_REVISION`, `RECHAZADA_REVISION`), `createdAt`, `updatedAt`; si fue retenida, `reviewReasons`; si fue revisada, `reviewDecision`, `reviewMotivo`, `reviewedBy` (seudónimo o `system`) y `reviewedAt`. Transiciones de revisión: `EN_REVISION → PENDIENTE_SIMULACION | RECHAZADA_REVISION`.
 - `VelocityCounter` (en la tabla de idempotencia): `pk = velocity#donorSub#minute#yyyyMMddHHmm` con `donationCount`, y `pk = velocity#donorSub#hour#yyyyMMddHH` con `totalCents`, `nearMaxCount`, `windowVersion`; `expiresAt` (TTL).
 - `IdempotencyRecord`: `pk = donorSub#createDonation#idempotencyKey`, `payloadHash`, `donationId`, `responseStatus`, `expiresAt` (TTL).
 - `AuditEvent`: `eventId`, `timestamp`, `requestId`, `actorRef` (seudónimo), `action`, `resourceRef`, `outcome`.
@@ -176,7 +185,7 @@ Prioridad: **MVP** = obligatorio; **Extensión** = puntos adicionales, no necesa
 
 ## 5. Priorización y criterios de terminado (Definition of Done)
 
-**MVP obligatorio:** HU-01 a HU-09, HU-11 y RNF-HU-01 a RNF-HU-11. **Extensión:** HU-10 y HU-12. Se admite simplificar la interfaz, **no** eliminar controles de seguridad. No se sustituirá Cognito por un JWT autoemitido ni por un login ficticio presentado como Zero Trust.
+**MVP obligatorio:** HU-01 a HU-09, HU-11, HU-13 y RNF-HU-01 a RNF-HU-11. **Extensión:** HU-10 y HU-12. Se admite simplificar la interfaz, **no** eliminar controles de seguridad. No se sustituirá Cognito por un JWT autoemitido ni por un login ficticio presentado como Zero Trust.
 
 Entregado cuando: (a) demo con usuarios de prueba de los cuatro roles; (b) pruebas T01–T14 ejecutadas con evidencia; (c) logs sin secretos; (d) README con despliegue, limpieza y restricciones de la cuenta; (e) GitHub con PR revisados y CI en verde; (f) tabla de mapeo NIST; (g) `AI_USAGE.md` completo; (h) recursos AWS eliminados tras la evaluación.
 

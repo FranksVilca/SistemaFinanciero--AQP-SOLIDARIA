@@ -103,8 +103,8 @@ describe("API Gateway JWT authorizer (T02, T11)", () => {
   });
   afterAll(() => deleteStack(STACK));
 
-  it("exposes six protected routes and three public ones, as the template declares", () => {
-    expect(protectedRoutes).toHaveLength(6);
+  it("exposes eight protected routes and three public ones, as the template declares", () => {
+    expect(protectedRoutes).toHaveLength(8);
     expect(publicRoutes).toHaveLength(3);
   });
 
