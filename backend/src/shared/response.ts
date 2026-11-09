@@ -31,16 +31,18 @@ export function buildErrorResponse(
   let statusCode = 500;
   let code = "INTERNAL_SERVER_ERROR";
   let message = "Ha ocurrido un error interno";
+  let errorHeaders: Record<string, string> = {};
 
   if (error instanceof AppError) {
     statusCode = error.statusCode;
     code = error.code;
     message = error.message;
+    errorHeaders = error.headers;
   }
 
   return {
     statusCode,
-    headers: { ...DEFAULT_HEADERS, ...extraHeaders },
+    headers: { ...DEFAULT_HEADERS, ...errorHeaders, ...extraHeaders },
     body: JSON.stringify({
       code,
       message,

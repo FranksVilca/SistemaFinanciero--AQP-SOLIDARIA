@@ -187,6 +187,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno, por ejemplo una transacción cancelada por un motivo inesperado (no se registra nada)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: >-
+            Otras donaciones del mismo donante se procesan a la vez y se agotaron los reintentos (SERVICE_UNAVAILABLE).
+            No se registró nada; puede repetirse con la misma Idempotency-Key tras el tiempo de Retry-After.
+          headers:
+            Retry-After:
+              description: Segundos sugeridos antes de reintentar
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /donations/{donationId}/simulate:
     post:

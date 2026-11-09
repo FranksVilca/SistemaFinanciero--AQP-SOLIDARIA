@@ -18,17 +18,18 @@ import {
   ConflictError,
   NotFoundError,
   PolicyDenialError,
+  ServiceUnavailableError,
   TooManyRequestsError,
   ValidationError,
 } from "../shared/errors.js";
 import { hashPayload } from "../shared/hash.js";
-import { logError, logInfo } from "../shared/logger.js";
+import { logError, logInfo, logWarn } from "../shared/logger.js";
 import { parseJsonBody } from "../shared/request.js";
 import { buildSuccessResponse, type ApiResponse } from "../shared/response.js";
 import { CreateDonationSchema, IdempotencyHeaderSchema } from "../shared/schemas.js";
 import {
   assessDonation,
-  isMinuteQuotaExhausted,
+  classifyCancellation,
   readHourlyWindow,
   readVelocityConfig,
   velocityTransactItems,
@@ -39,9 +40,14 @@ import {
 
 const IDEMPOTENCY_HEADER = "Idempotency-Key";
 const CREATED = 201;
-// Concurrent donations of one donor contend for the same hourly window; each round commits at least one of them.
-const MAX_ATTEMPTS = 10;
-const RETRY_BASE_DELAY_MS = 10;
+// Concurrent donations of one donor contend for the same hourly window. A round can commit one of them or none
+// (a TransactionConflict may cancel every contender), so retries are bounded by attempts and by time.
+const MAX_ATTEMPTS = 8;
+// Well under the 10 s Lambda timeout (Globals in infra/template.yaml): room for the reads, the audit and a cold start.
+const RETRY_BUDGET_MS = 3_000;
+const RETRY_BASE_DELAY_MS = 25;
+const RETRY_MAX_DELAY_MS = 400;
+const RETRY_AFTER_SECONDS = 1;
 
 function readIdempotencyKey(event: ApiEvent): string {
   const rawKey = readHeader(event, IDEMPOTENCY_HEADER);
@@ -163,12 +169,12 @@ async function tryCreate(request: DonationRequest): Promise<{ donation: Donation
   return { donation, assessment };
 }
 
-/** After a cancelled transaction: a replay answers with the original donation, an exhausted quota with 429. */
-async function resolveCancellation(request: DonationRequest): Promise<ApiResponse | undefined> {
-  const replay = await replayIdempotentRequest(request.idempotencyPk, request.payloadHash);
-  if (replay) return replay;
-  const { minutePk } = velocityWindowsOf(request.donorSub, new Date());
-  if (!(await isMinuteQuotaExhausted(minutePk, request.config))) return undefined; // contention: try again
+function cancellationCodesOf(error: unknown): string[] {
+  const reasons = (error as { CancellationReasons?: Array<{ Code?: string }> }).CancellationReasons ?? [];
+  return reasons.map((reason) => reason.Code ?? "None");
+}
+
+async function rejectRateLimited(request: DonationRequest): Promise<never> {
   await auditVelocity(request, {
     eventType: AUDIT_EVENT_TYPES.donationRateLimited,
     resourceRef: resolveResourceRef(request.event),
@@ -177,6 +183,25 @@ async function resolveCancellation(request: DonationRequest): Promise<ApiRespons
     details: { limitPerMinute: request.config.maxPerMinute },
   });
   throw new TooManyRequestsError();
+}
+
+/**
+ * After a cancelled transaction, by the reason of each item: a replay answers with the original donation and an
+ * exhausted minute quota with 429; undefined means contention (try again). Anything else is rethrown as is.
+ */
+async function resolveCancellation(request: DonationRequest, error: unknown): Promise<ApiResponse | undefined> {
+  const codes = cancellationCodesOf(error);
+  const outcome = classifyCancellation(codes);
+  if (outcome === "contention") return undefined;
+  if (outcome === "rateLimited") return rejectRateLimited(request);
+  const replay =
+    outcome === "replay" ? await replayIdempotentRequest(request.idempotencyPk, request.payloadHash) : undefined;
+  if (replay) return replay;
+  logError("Donation transaction cancelled for an unexpected reason", undefined, {
+    requestId: request.requestId,
+    cancellationReasons: codes,
+  });
+  throw error;
 }
 
 async function flagIfSuspicious(request: DonationRequest, donation: Donation, assessment: Assessment): Promise<void> {
@@ -195,11 +220,17 @@ async function flagIfSuspicious(request: DonationRequest, donation: Donation, as
   });
 }
 
+/** Exponential backoff with full jitter: a random delay in [0, min(cap, base * 2^attempt)). */
 const backoff = (attempt: number) =>
-  new Promise((resolve) => setTimeout(resolve, RETRY_BASE_DELAY_MS * attempt * (1 + Math.random())));
+  new Promise((resolve) =>
+    setTimeout(resolve, Math.random() * Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** attempt))
+  );
 
 async function createWithVelocityControls(request: DonationRequest): Promise<ApiResponse> {
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  const startedAt = Date.now();
+  let attempt = 0;
+  while (attempt < MAX_ATTEMPTS && Date.now() - startedAt < RETRY_BUDGET_MS) {
+    attempt++;
     try {
       const { donation, assessment } = await tryCreate(request);
       logInfo("Donation intent created", { requestId: request.requestId, donationId: donation.donationId });
@@ -207,12 +238,20 @@ async function createWithVelocityControls(request: DonationRequest): Promise<Api
       return buildSuccessResponse(donation, CREATED);
     } catch (error) {
       if (!isDynamoError(error, DYNAMO_ERROR.transactionCanceled)) throw error;
-      const answer = await resolveCancellation(request);
+      const answer = await resolveCancellation(request, error);
       if (answer) return answer;
       await backoff(attempt);
     }
   }
-  throw new ConflictError("Otras donaciones suyas se están procesando al mismo tiempo; intente nuevamente");
+  logWarn("Donation gave up after contended attempts", {
+    requestId: request.requestId,
+    attempts: attempt,
+    elapsedMs: Date.now() - startedAt,
+  });
+  throw new ServiceUnavailableError(
+    "Otras donaciones suyas se están procesando al mismo tiempo; intente nuevamente en unos segundos",
+    RETRY_AFTER_SECONDS
+  );
 }
 
 export const handler = withAuth(

@@ -14,8 +14,9 @@ const LIMIT_PER_MINUTE = 5;
 const BELOW_NEAR_MAX_CENTS = 89_999;
 const MS_PER_MINUTE = 60_000;
 
-// The windows are fixed minutes: the clock is frozen 20 seconds into a minute so a burst never straddles two of them.
-const frozenMinute = () => Math.floor(Date.now() / MS_PER_MINUTE) * MS_PER_MINUTE + 20_000;
+// The windows are fixed UTC minutes and hours. The clock is frozen at a fixed instant 20 seconds into minute 10 of an
+// hour, so a burst never straddles two minutes and "one minute later" stays in the same hour, whenever the suite runs.
+const FROZEN_INSTANT = Date.parse("2030-01-15T10:10:20.000Z");
 
 function donate(donor: TestIdentity, projectId: string, amountCents: number, key: string = randomUUID()) {
   return createDonation(
@@ -36,7 +37,7 @@ describe("velocity controls on real transactions", () => {
 
   beforeEach(async () => {
     await clearAllTables();
-    start = frozenMinute();
+    start = FROZEN_INSTANT;
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(start);
   });

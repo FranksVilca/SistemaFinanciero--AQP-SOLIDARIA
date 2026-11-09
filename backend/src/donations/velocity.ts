@@ -105,12 +105,27 @@ export async function readHourlyWindow(hourPk: string): Promise<StoredHourlyWind
   };
 }
 
-/** True when the donor already used the whole quota of the current minute. */
-export async function isMinuteQuotaExhausted(minutePk: string, config: VelocityConfig): Promise<boolean> {
-  const { Item } = await docClient.send(
-    new GetCommand({ TableName: TABLE_NAMES.idempotency, Key: { pk: minutePk }, ConsistentRead: true })
-  );
-  return Number(Item?.donationCount ?? 0) >= config.maxPerMinute;
+/** Position of each item in the donation transaction; CancellationReasons come back in the same order. */
+export const TRANSACTION_ITEM = { idempotency: 0, donation: 1, minuteCounter: 2, hourlyWindow: 3 } as const;
+
+export type CancellationOutcome = "replay" | "rateLimited" | "contention" | "unexpected";
+
+const CONDITION_FAILED = "ConditionalCheckFailed";
+const CONFLICT = "TransactionConflict";
+const NO_FAILURE = "None";
+const EXPECTED_CODES = new Set([NO_FAILURE, CONDITION_FAILED, CONFLICT]);
+
+/**
+ * What a cancelled donation transaction means, from its reason codes. Only a stale hourly window or a conflict with a
+ * concurrent transaction is retried; any other code (ValidationError, ThrottlingError, capacity errors) and a set
+ * without a failing item are unexpected and must not be retried or disguised.
+ */
+export function classifyCancellation(codes: string[]): CancellationOutcome {
+  if (codes[TRANSACTION_ITEM.idempotency] === CONDITION_FAILED) return "replay";
+  if (codes[TRANSACTION_ITEM.minuteCounter] === CONDITION_FAILED) return "rateLimited";
+  if (!codes.every((code) => EXPECTED_CODES.has(code))) return "unexpected";
+  if (codes[TRANSACTION_ITEM.hourlyWindow] === CONDITION_FAILED || codes.includes(CONFLICT)) return "contention";
+  return "unexpected";
 }
 
 /**

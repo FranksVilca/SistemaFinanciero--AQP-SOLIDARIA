@@ -90,11 +90,29 @@ export class FakeDynamo {
     return result;
   }
 
+  /** Cancellation reason codes (one per item, or undefined for no reasons) forced on the next transactions, in order. */
+  private readonly forcedCancellations: Array<string[] | undefined> = [];
+  /** Called before every transaction (for example to move a frozen clock). */
+  onTransact: () => void = () => undefined;
+
+  failNextTransactions(...cancellations: Array<string[] | undefined>): void {
+    this.forcedCancellations.push(...cancellations);
+  }
+
+  private static cancelled(codes: string[] | undefined): Error {
+    return Object.assign(new Error("Transaction cancelled"), {
+      name: "TransactionCanceledException",
+      ...(codes && { CancellationReasons: codes.map((Code) => ({ Code })) }),
+    });
+  }
+
   transact(items: TransactItem[]): void {
     this.transactions.push(items);
+    this.onTransact();
+    if (this.forcedCancellations.length > 0) throw FakeDynamo.cancelled(this.forcedCancellations.shift());
     const writes = items.map((entry) => this.prepare(entry));
     if (writes.some((write) => write === undefined)) {
-      throw Object.assign(new Error("Transaction cancelled"), { name: "TransactionCanceledException" });
+      throw FakeDynamo.cancelled(writes.map((write) => (write ? "None" : "ConditionalCheckFailed")));
     }
     for (const write of writes) write!();
   }
