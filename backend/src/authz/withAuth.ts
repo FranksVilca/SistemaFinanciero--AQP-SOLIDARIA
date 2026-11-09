@@ -10,8 +10,14 @@ import {
   SENSITIVE_ACTIONS,
   type AuthzAction,
 } from "../shared/constants.js";
-import { ForbiddenError, PolicyDenialError, UnauthorizedError } from "../shared/errors.js";
-import { logError, logInfo } from "../shared/logger.js";
+import {
+  AppError,
+  ForbiddenError,
+  PolicyDenialError,
+  ServiceUnavailableError,
+  UnauthorizedError,
+} from "../shared/errors.js";
+import { logError, logInfo, logWarn } from "../shared/logger.js";
 import { buildErrorResponse, type ApiResponse } from "../shared/response.js";
 import { extractAuthClaims, type AuthPrincipal } from "./claims.js";
 import { currentGroupsOf } from "./currentGroups.js";
@@ -81,6 +87,23 @@ async function recordSafely(write: () => Promise<void>, request: RequestAudit): 
   } catch (error) {
     logError("Audit event could not be written", error, { requestId: request.requestId, action: request.action });
   }
+}
+
+/**
+ * A refusal the API answers on purpose (validation, denial, conflict, rate limit, a contended retry) is the system
+ * working, not failing: it is logged as a warning so an alarm on errors only fires for faults.
+ */
+function isExpectedRefusal(error: unknown): error is AppError {
+  return error instanceof AppError && (error.statusCode < 500 || error instanceof ServiceUnavailableError);
+}
+
+function logFailure(error: unknown, request: RequestAudit): void {
+  const context = { requestId: request.requestId, action: request.action };
+  if (isExpectedRefusal(error)) {
+    logWarn("Request refused", { ...context, statusCode: error.statusCode, code: error.code });
+    return;
+  }
+  logError("Request failed", error, context);
 }
 
 async function auditDenial(denial: Denial, request: RequestAudit): Promise<void> {
@@ -192,7 +215,7 @@ export function withAuth<TResource = undefined>(
     } catch (error) {
       // A rule of the domain that the handler enforces is an authorization denial too: it is audited as one.
       if (error instanceof PolicyDenialError) await auditDenial({ allowed: false, reason: error.reason }, request);
-      logError("Request failed", error, { requestId, action: options.action });
+      logFailure(error, request);
       return buildErrorResponse(error, requestId);
     }
   };

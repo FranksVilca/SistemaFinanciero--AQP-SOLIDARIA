@@ -114,11 +114,14 @@ describe("cancelled donation transactions are classified by their reasons", () =
 
   it("gives up after a bounded number of contended attempts with 503 and a retry hint", async () => {
     const warnings = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
     dynamo.failNextTransactions(...Array.from({ length: 20 }, () => [NONE, NONE, NONE, CONFLICT]));
 
     const response = await donate();
 
     expect(response.statusCode).toBe(503);
+    // An answer the API gives on purpose is a warning, never an error: an alarm on errors must not fire for it.
+    expect(errors).not.toHaveBeenCalled();
     expect(response.headers["Retry-After"]).toBe("1");
     expect(bodyOf(response).code).toBe("SERVICE_UNAVAILABLE");
     expect(dynamo.transactions).toHaveLength(MAX_ATTEMPTS);
@@ -126,6 +129,11 @@ describe("cancelled donation transactions are classified by their reasons", () =
     const warning = warnings.mock.calls.map((call) => JSON.parse(String(call[0])));
     expect(warning).toEqual([
       expect.objectContaining({ level: "WARN", context: expect.objectContaining({ attempts: 8 }) }),
+      expect.objectContaining({
+        level: "WARN",
+        message: "Request refused",
+        context: expect.objectContaining({ statusCode: 503 }),
+      }),
     ]);
   });
 

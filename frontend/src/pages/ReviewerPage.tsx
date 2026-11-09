@@ -221,7 +221,13 @@ const QueueList: React.FC<{
 }> = ({ page, selectedId, canGoBack, onSelect, onPrevious, onNext }) => (
   <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
     {page.items.length === 0 && (
-      <p className="text-sm text-slate-500 text-center py-16">No hay donaciones pendientes de revisión.</p>
+      // DynamoDB filters out the reviewer's own donations after reading the page, so a page can come back empty while
+      // the queue goes on: only a page without a nextToken means there is nothing left to review.
+      <p className="text-sm text-slate-500 text-center py-16">
+        {page.nextToken
+          ? "No hay donaciones para usted en esta página. Use «Siguiente» para ver más."
+          : "No hay donaciones pendientes de revisión."}
+      </p>
     )}
     <ul className="divide-y divide-slate-100">
       {page.items.map((item) => (

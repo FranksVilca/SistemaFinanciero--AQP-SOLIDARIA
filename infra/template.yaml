@@ -721,10 +721,18 @@ Resources:
               Resource:
                 - !GetAtt DonationsTable.Arn
                 - !GetAtt IdempotencyTable.Arn
-            # Velocity counters (velocity#...) live in the idempotency table; only that table is updated.
+            # Velocity counters (velocity#...) live in the idempotency table. UpdateItem is limited to them by partition
+            # key prefix (also inside a transaction: DynamoDB authorizes each item on its own). ForAllValues is
+            # required with LeadingKeys and is true when the key is absent, so the Null condition demands a key.
             - Effect: Allow
               Action: dynamodb:UpdateItem
               Resource: !GetAtt IdempotencyTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  dynamodb:LeadingKeys:
+                    - "velocity#*"
+                "Null":
+                  dynamodb:LeadingKeys: "false"
             - Effect: Allow
               Action: dynamodb:PutItem
               Resource: !GetAtt AuditTable.Arn

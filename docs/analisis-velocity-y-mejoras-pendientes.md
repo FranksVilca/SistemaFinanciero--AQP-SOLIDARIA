@@ -1,6 +1,10 @@
 # Análisis de la rama `feat/donation-velocity-limits` y mejoras pendientes
 
-Documento de trabajo. Reúne el análisis hecho sobre la rama frente a `main`, el estado del throttling y la observabilidad, y las reglas de negocio que faltan. **No hay nada implementado a partir de este documento**: es la lista de lo que conviene hacer, con el motivo y la forma de verificarlo.
+Documento de trabajo. Reúne el análisis hecho sobre la rama frente a `main`, el estado del throttling y la observabilidad, y las reglas de negocio que faltan.
+
+> **Actualización (2026-11-09, tras fusionar `feat/donation-review-flow`).** La rama ya incluye el flujo de revisión (rol REVISOR, cola, decisión y vencimiento diario), así que las secciones 4.5 y 7.2 quedaron superadas (ver la nota en cada una). Se implementaron y verificaron los puntos 4.3.1, 4.3.2, 4.3.3 y 4.3.4, el aviso de acumulación del job de vencimiento y la clave de idempotencia estable en el modal (4.4.4). El 4.3.5 sigue abierto: se fijó con un test y sigue pendiente la decisión de producto. Las referencias de línea del texto original corresponden a antes de la fusión.
+>
+> **Verificado en esta actualización:** `npm run typecheck`, `npm test` (154), `npm run test:infra` (281), `npm run test:integration` (72, con DynamoDB Local) y `test/floci/iamEnforcement.test.ts` (Floci con IAM activo). **No verificado:** el despliegue real (la sesión del perfil `aqp` de AWS CLI estaba vencida) y el comportamiento de la condición de IAM contra AWS real, solo contra Floci.
 
 - Fecha del análisis: 2026-11-09.
 - Rama analizada: `feat/donation-velocity-limits` (2 commits sobre `main`: `888a97a` y `e2ca36d`; 29 archivos, +1283/-73).
@@ -91,20 +95,20 @@ Controles antiabuso **por donante** al crear una donación:
 
 ### 4.3 Hallazgos y cambios propuestos
 
-#### 4.3.1 El modal de donación afirma un estado falso — **prioridad alta, esfuerzo bajo**
+#### 4.3.1 El modal de donación afirma un estado falso — **HECHO**
 [frontend/src/components/DonationModal.tsx:85](../frontend/src/components/DonationModal.tsx#L85) escribe a mano "registrada en estado PENDIENTE_SIMULACION" y manda a pulsar "Simular Aprobación". Si la donación quedó `EN_REVISION`, es falso y simularla devuelve 409.
 - **Cambio:** usar `result.status` de la respuesta y mostrar un texto específico para `EN_REVISION` (retenida por controles antifraude; no se suma al proyecto ni puede simularse).
 
-#### 4.3.2 El auditor no ve los datos que la rama añadió — **prioridad alta, esfuerzo bajo**
+#### 4.3.2 El auditor no ve los datos que la rama añadió — **HECHO**
 Los eventos nuevos guardan `reason` y `details` (total horario, umbral, conteos) y `getAuditEvents` devuelve el ítem completo. Pero [frontend/src/pages/AuditorPage.tsx:7-16](../frontend/src/pages/AuditorPage.tsx#L7-L16) no declara esos campos y la tabla no muestra tipo de evento, `reason` ni `details`. Una donación retenida aparece como "CreateDonation … SUCCESS", igual que una normal; solo el filtro desplegable las distingue.
 - **Cambio:** declarar `eventType`, `reason`, `details` en la interfaz; añadir columnas de tipo de evento y motivo, y mostrar `details`.
 
-#### 4.3.3 IAM concede más de lo que la documentación promete — **prioridad media, esfuerzo bajo-medio**
+#### 4.3.3 IAM concede más de lo que la documentación promete — **HECHO**
 [iam-permissions-matrix.md](../specs/002-zta-hardening/contracts/iam-permissions-matrix.md) dice "U (solo contadores `velocity#`)", pero la política en [infra/template.yaml:694-697](../infra/template.yaml#L694-L697) da `dynamodb:UpdateItem` sobre **toda** la tabla de idempotencia. Solo el código acota el alcance.
 - **Cambio propuesto:** añadir una condición `dynamodb:LeadingKeys` con `StringLike` `velocity#*`. La documentación de AWS confirma que `LeadingKeys` restringe por valor de clave de partición; **el uso de comodín con `StringLike` no se confirmó en la documentación y hay que probarlo**.
 - Ajustar `backend/test/infra/velocityControls.test.ts` y correr `backend/test/floci/iamEnforcement.test.ts`.
 
-#### 4.3.4 Los 429 y 503 se registran como errores — **prioridad media, esfuerzo bajo**
+#### 4.3.4 Los 429 y 503 se registran como errores — **HECHO**
 [backend/src/authz/withAuth.ts](../backend/src/authz/withAuth.ts) llama a `logError("Request failed")` para toda excepción, incluidos los resultados esperados (429, 503). Si se añaden alarmas por errores, el comportamiento normal de un usuario las dispararía.
 - **Cambio:** registrar los `AppError` esperados (429, 503) como `warn`.
 
@@ -121,8 +125,10 @@ Los eventos nuevos guardan `reason` y `details` (total horario, umbral, conteos)
 4. **Clave de idempotencia en la UI (ya existía en `main`).** El modal genera un `crypto.randomUUID()` nuevo en cada envío ([DonationModal.tsx:41](../frontend/src/components/DonationModal.tsx#L41)). `docs/api.yaml` dice que tras un 503 se puede repetir "con la misma Idempotency-Key", pero la UI nunca la reutiliza. Tras un 503 no pasa nada (no se escribió nada); el riesgo real es un duplicado si la donación se crea pero se pierde la respuesta.
 5. **Las retenidas cuentan** en el límite por minuto y en el total horario. Correcto, pero no está dicho en ningún sitio.
 
-### 4.5 `EN_REVISION` no tiene salida
-Nadie puede liberar ni rechazar esas donaciones. `docs/threat-model.md` ya lo declara ("no existe todavía un flujo para que un revisor la libere o la rechace").
+### 4.5 `EN_REVISION` no tiene salida — SUPERADO (el flujo de revisión ya existe)
+> **Superado:** la rama `feat/donation-review-flow` ya construyó el flujo (rol REVISOR, cola con el índice `status-createdAt-index`, decisión con cuatro ojos y vencimiento diario). El texto de abajo es el análisis previo a esa decisión y se conserva como contexto.
+
+Nadie podía liberar ni rechazar esas donaciones. `docs/threat-model.md` ya lo declara ("no existe todavía un flujo para que un revisor la libere o la rechace").
 
 **No se recomienda construir el flujo ahora.** Razones verificadas en el código:
 - **El auditor no puede ser el revisor:** [evaluateAuthz.ts:45](../backend/src/authz/evaluateAuthz.ts#L45) prohíbe combinar el rol AUDITOR con otros; el sistema se basa en que el auditor observa y no actúa.
@@ -163,12 +169,12 @@ Orden sugerido. "Esta rama" significa que conviene hacerlo antes de fusionar `fe
 
 | # | Cambio | Dónde | Esfuerzo | Valor |
 |---|---|---|---|---|
-| 1 | Usar el estado real y explicar `EN_REVISION` en el modal | `DonationModal.tsx` (esta rama) | Bajo | Alto |
-| 2 | Mostrar tipo de evento, motivo y `details` al auditor | `AuditorPage.tsx` (esta rama) | Bajo | Alto |
-| 3 | Test que fije "una vez marcado, todo marcado" + documentarlo | `test/donations`, `threat-model.md` (esta rama) | Bajo | Medio |
-| 4 | Registrar 429/503 como `warn` | `withAuth.ts` (esta rama) | Bajo | Medio |
-| 5 | Acotar IAM con `LeadingKeys` `velocity#*` (probar el comodín) | `template.yaml`, tests de infra y floci (esta rama) | Bajo-medio | Medio |
-| 6 | Documentar los problemas de lógica de 4.4 y el matiz de las cuentas | `docs/threat-model.md` | Mínimo | Medio |
+| 1 | Usar el estado real y explicar `EN_REVISION` en el modal | `DonationModal.tsx` (esta rama) | Bajo | Alto | **Hecho** |
+| 2 | Mostrar tipo de evento, motivo y `details` al auditor | `AuditorPage.tsx` (esta rama) | Bajo | Alto | **Hecho** |
+| 3 | Test que fije "una vez marcado, todo marcado" + documentarlo | `test/donations`, `threat-model.md` (esta rama) | Bajo | Medio | Test hecho; falta la línea en `threat-model.md` y la decisión |
+| 4 | Registrar 429/503 como `warn` | `withAuth.ts` (esta rama) | Bajo | Medio | **Hecho** |
+| 5 | Acotar IAM con `LeadingKeys` `velocity#*` (probar el comodín) | `template.yaml`, tests de infra y floci (esta rama) | Bajo-medio | Medio | **Hecho** (verificado en Floci, no en AWS real) |
+| 6 | Documentar los problemas de lógica de 4.4 y el matiz de las cuentas | `docs/threat-model.md` | Mínimo | Medio | Pendiente |
 | 7 | Resolver el cierre de campaña (sección 5) | Dominio completo | Medio-alto | Alto, **depende de decisión** |
 | 8 | Alarmas CloudWatch + SNS por email, y `AWS::Budgets::Budget` | `template.yaml` | Bajo | Medio; **hacerlo después del 4** |
 | 9 | Extraer el bucle de reintentos a un módulo | `createDonation.ts` | Bajo | Bajo |
@@ -186,7 +192,7 @@ Orden sugerido. "Esta rama" significa que conviene hacerlo antes de fusionar `fe
 ## 7. Decisiones que debe tomar quien define los requisitos
 
 1. **Regla de "una vez marcado, todo marcado" (4.3.5):** ¿se mantiene, o solo se marca la donación que cruza el umbral?
-2. **Revisión de `EN_REVISION`:** ¿basta con documentarla como fase 2, o el curso exige el flujo completo? Si se construye, hay que decidir el revisor (un rol nuevo, o el gestor del proyecto) y cómo listar las retenidas (índice por estado o consulta sobre los eventos de auditoría).
+2. **Revisión de `EN_REVISION` (resuelta: se construyó el flujo con un rol REVISOR; queda abierta solo la política de volumen, ver 4.3.5):** ¿basta con documentarla como fase 2, o el curso exige el flujo completo? Si se construye, hay que decidir el revisor (un rol nuevo, o el gestor del proyecto) y cómo listar las retenidas (índice por estado o consulta sobre los eventos de auditoría).
 3. **Cierre de campaña (sección 5):**
    - **Variante A, cierre automático al alcanzar la meta:** rechazar nuevas donaciones cuando lo confirmado alcance la meta. Hay que decidir si cuentan las pendientes. Si no cuentan, se sobrefinancia igual. Si cuentan, las pendientes que luego se rechazan dejan la campaña bloqueada sin haber alcanzado nada.
    - **Variante B, permitir sobrefinanciar y solo avisar:** válido si se declara. Es lo que hacen muchas plataformas.

@@ -54,6 +54,16 @@ describe.each(STAGES)("velocity controls of CreateDonation in stage %s", (stage)
     expect(withUpdate[0].Resource).toEqual({ "Fn::GetAtt": ["IdempotencyTable", "Arn"] });
   });
 
+  it("limits that UpdateItem to the velocity# partition keys, and requires a key to be present", () => {
+    const withUpdate = statements.find((statement) => actionsOf(statement).includes("dynamodb:UpdateItem"))!;
+
+    // ForAllValues is true when the key is absent: without the Null condition a request without a key would pass.
+    expect((withUpdate as unknown as { Condition: unknown }).Condition).toEqual({
+      "ForAllValues:StringLike": { "dynamodb:LeadingKeys": ["velocity#*"] },
+      Null: { "dynamodb:LeadingKeys": "false" },
+    });
+  });
+
   it("gives no other function the thresholds", () => {
     const others = lambdaFunctions(template).filter(([, definition]) => definition !== createDonation);
 

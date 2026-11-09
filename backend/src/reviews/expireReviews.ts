@@ -12,7 +12,7 @@ import {
   SYSTEM_ACTOR,
 } from "../shared/constants.js";
 import { docClient, QueryCommand, TABLE_NAMES } from "../shared/dynamo.js";
-import { logInfo } from "../shared/logger.js";
+import { logInfo, logWarn } from "../shared/logger.js";
 import { auditReview } from "./auditReview.js";
 import { resolveReview } from "./resolveReview.js";
 
@@ -93,5 +93,7 @@ export async function handler(_event?: unknown, context?: { awsRequestId?: strin
 
   summary.hasMore = startKey !== undefined;
   logInfo("Overdue reviews expired", { requestId, ...summary, expiryDays });
+  // A backlog the run could not clear in one pass (a flood of held donations) must be visible, not silent.
+  if (summary.hasMore) logWarn("Overdue reviews remain for the next run", { requestId, ...summary, expiryDays });
   return summary;
 }

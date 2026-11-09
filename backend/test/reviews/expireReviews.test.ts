@@ -159,10 +159,14 @@ describe("the daily expiry of reviews", () => {
   it("resolves at most 100 donations per run, reading the index in pages of 25", async () => {
     for (let index = 0; index < 130; index++) heldSince(daysAgo(30 - index / 10));
     indexServes();
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     const summary = await expireReviews();
 
     expect(summary).toEqual({ expired: 100, skipped: 0, hasMore: true });
+    // A backlog the run could not clear must be visible (an alarm can be built on it), not silent.
+    expect(warnings).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(warnings.mock.calls[0]?.[0])).message).toBe("Overdue reviews remain for the next run");
     expect(queries).toHaveLength(4);
     expect(queries.every((query) => query.Limit === 25)).toBe(true);
     expect(dynamo.items(TABLE_NAMES.donations).filter((item) => item.status === "EN_REVISION")).toHaveLength(30);
@@ -171,8 +175,10 @@ describe("the daily expiry of reviews", () => {
   it("does nothing when no donation is overdue", async () => {
     heldSince(daysAgo(1));
     indexServes();
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     expect(await expireReviews()).toEqual({ expired: 0, skipped: 0, hasMore: false });
     expect(dynamo.updates).toHaveLength(0);
+    expect(warnings).not.toHaveBeenCalled();
   });
 });

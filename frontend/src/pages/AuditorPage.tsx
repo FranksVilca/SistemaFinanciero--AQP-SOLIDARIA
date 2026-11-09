@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "../services/apiClient.js";
 import { useAuth } from "../auth/AuthContext.js";
+import { formatPEN } from "../types/index.js";
 import { ShieldCheck, AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 
 interface AuditEvent {
@@ -13,7 +14,30 @@ interface AuditEvent {
   resourceRef: string;
   action: string;
   outcome: "SUCCESS" | "DENIED" | "FAILED";
+  /** Why the event happened: a denial reason, the velocity rule that held a donation, or a review decision. */
+  reason?: string;
+  /** Numeric context of the decision (totals, thresholds, counts); never personal data. */
+  details?: Record<string, number>;
 }
+
+const formatDetail = (key: string, value: number): string =>
+  `${key}: ${key.endsWith("Cents") ? formatPEN(value) : value}`;
+
+/** What the auditor needs to tell a held donation or a review decision from a routine event. */
+const EventDetail: React.FC<{ event: AuditEvent }> = ({ event }) => {
+  const details = Object.entries(event.details ?? {});
+  if (!event.reason && details.length === 0) return <span className="text-slate-300">—</span>;
+  return (
+    <div className="space-y-0.5">
+      {event.reason && <div className="font-semibold text-slate-800 break-all">{event.reason}</div>}
+      {details.map(([key, value]) => (
+        <div key={key} className="text-[11px] text-slate-500 whitespace-nowrap">
+          {formatDetail(key, value)}
+        </div>
+      ))}
+    </div>
+  );
+};
 
 const ALL_EVENT_TYPES = "";
 
@@ -126,10 +150,12 @@ export const AuditorPage: React.FC = () => {
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider">
                 <tr>
                   <th className="px-4 py-3">Fecha / Hora (UTC)</th>
+                  <th className="px-4 py-3">Evento</th>
                   <th className="px-4 py-3">Acción</th>
                   <th className="px-4 py-3">Actor (Seudónimo)</th>
                   <th className="px-4 py-3">Recurso</th>
                   <th className="px-4 py-3">Resultado</th>
+                  <th className="px-4 py-3">Motivo / detalle</th>
                   <th className="px-4 py-3">Correlation ID</th>
                 </tr>
               </thead>
@@ -139,6 +165,7 @@ export const AuditorPage: React.FC = () => {
                     <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
                       {new Date(ev.timestamp).toLocaleString("es-PE")}
                     </td>
+                    <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{ev.eventType}</td>
                     <td className="px-4 py-3 font-semibold text-slate-900">{ev.action}</td>
                     <td className="px-4 py-3 text-indigo-600">{ev.actorRef}</td>
                     <td className="px-4 py-3 text-slate-700">{ev.resourceRef}</td>
@@ -152,6 +179,9 @@ export const AuditorPage: React.FC = () => {
                       >
                         {ev.outcome}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <EventDetail event={ev} />
                     </td>
                     <td className="px-4 py-3 text-slate-400 text-[11px]">{ev.requestId}</td>
                   </tr>

@@ -76,6 +76,17 @@ describe("hourly assessment", () => {
     expect(third).toEqual({ totalCents: 275_000, nearMaxCount: 3, reasons: ["STRUCTURING"] });
     expect(below.nearMaxCount).toBe(0);
   });
+
+  // Documents the rule as it is (a state detector, not a crossing detector): the window only accumulates, so once a rule
+  // has tripped, every later donation of the same hour is held too, even one of S/ 1. Each of them reaches the review
+  // queue, so changing this is a product decision (see docs/analisis-velocity-y-mejoras-pendientes.md, 4.3.5).
+  it("keeps holding every later donation of the hour once a rule has tripped, however small", () => {
+    const overThreshold = { totalCents: 500_001, nearMaxCount: 0 };
+    const structuring = { totalCents: 275_000, nearMaxCount: 3 };
+
+    expect(assessDonation(overThreshold, 100, DEFAULT_VELOCITY_CONFIG).reasons).toEqual(["HOURLY_AMOUNT"]);
+    expect(assessDonation(structuring, 100, DEFAULT_VELOCITY_CONFIG).reasons).toEqual(["STRUCTURING"]);
+  });
 });
 
 describe("too many requests", () => {
