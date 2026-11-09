@@ -192,6 +192,11 @@ Resources:
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
+          # CloudFormation processes the SAM transform with this role (a service role), not with the caller's.
+          - Sid: UseTheSamTransform
+            Effect: Allow
+            Action: cloudformation:CreateChangeSet
+            Resource: !Sub "arn:${AWS::Partition}:cloudformation:${AWS::Region}:aws:transform/Serverless-2016-10-31"
           - Sid: Tables
             Effect: Allow
             Action:
@@ -342,6 +347,7 @@ Resources:
               - cognito-idp:ListResourceServers
               - cognito-idp:ListTagsForResource
               - cognito-idp:ListUserPoolClients
+              - cognito-idp:ListUserPoolClientSecrets
               - cognito-idp:SetUICustomization
               - cognito-idp:SetUserPoolMfaConfig
               - cognito-idp:TagResource
@@ -413,6 +419,12 @@ Resources:
               - s3:GetAccelerateConfiguration
               - s3:GetBucketObjectLockConfiguration
               - s3:GetReplicationConfiguration
+              # CloudFormation reads the whole configuration of a bucket after it creates or changes it, not only the
+              # parts the template sets, so every read of a bucket setting is allowed (they change nothing).
+              - s3:GetAnalyticsConfiguration
+              - s3:GetIntelligentTieringConfiguration
+              - s3:GetInventoryConfiguration
+              - s3:GetMetricsConfiguration
             Resource: !Sub "arn:${AWS::Partition}:s3:::aqp-solidaria-*-${StageName}-${AWS::AccountId}"
           - Sid: ReadTheCodeThatTheFunctionsAreCreatedFrom
             Effect: Allow
@@ -433,6 +445,8 @@ Resources:
               - cloudtrail:ListTags
               - cloudtrail:PutEventSelectors
               - cloudtrail:GetEventSelectors
+              - cloudtrail:GetInsightSelectors
+              - cloudtrail:GetEventConfiguration
             Resource: !Sub "arn:${AWS::Partition}:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/aqp-solidaria-${StageName}"
           - Sid: FindingTrails
             Effect: Allow

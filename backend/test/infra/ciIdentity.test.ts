@@ -185,8 +185,18 @@ describe("the role that creates the resources, usable only by CloudFormation", (
 
   it("uses no service that the application does not need", () => {
     expect(new Set(allActions.map((action) => action.split(":")[0]))).toEqual(
-      new Set(["dynamodb", "lambda", "iam", "apigateway", "logs", "cognito-idp", "cloudfront", "s3", "cloudtrail"])
+      new Set(["cloudformation", "dynamodb", "lambda", "iam", "apigateway", "logs", "cognito-idp", "cloudfront", "s3", "cloudtrail"])
     );
+  });
+
+  it("uses CloudFormation for one thing only: processing the SAM transform of the stack, as a service role must", () => {
+    const cloudformation = executionStatements.filter((statement) =>
+      actionsOf(statement).some((action) => action.startsWith("cloudformation:"))
+    );
+
+    expect(cloudformation).toHaveLength(1);
+    expect(cloudformation[0].Action).toBe("cloudformation:CreateChangeSet");
+    expect(resourcesOf(cloudformation[0])).toEqual(["arn:aws:cloudformation:us-east-1:aws:transform/Serverless-2016-10-31"]);
   });
 
   it("can create roles only in the namespace of the application, which excludes the two roles of the CI", () => {
@@ -226,7 +236,7 @@ describe("the role that creates the resources, usable only by CloudFormation", (
     expect(withoutResource.map((statement) => statement.Sid)).toEqual(ALLOWED_WITHOUT_RESOURCE);
     for (const statement of executionStatements.filter((candidate) => !withoutResource.includes(candidate))) {
       for (const resource of resourcesOf(statement)) {
-        expect(resource, `${statement.Sid}`).toMatch(/^arn:aws:[a-z0-9-]+:(us-east-1)?:?(123456789012)?:?.*(aqp|aws-sam-cli|apis|tags|userpool)/);
+        expect(resource, `${statement.Sid}`).toMatch(/^arn:aws:[a-z0-9-]+:(us-east-1)?:?(123456789012)?:?.*(aqp|aws-sam-cli|apis|tags|userpool|transform)/);
       }
     }
   });
