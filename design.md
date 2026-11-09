@@ -73,6 +73,7 @@ flowchart TD
 - `donations`: intención, simulación, historial por propietario y agregados.
 - `authz`: deriva `sub` y `cognito:groups` del contexto del authorizer; aplica RBAC y ownership contra el recurso persistido.
 - `audit`: eventos estructurados y correlación por `requestId`.
+- `reviews`: cola y decisión de REVISOR sobre donaciones `EN_REVISION`, y job diario de vencimiento.
 
 ### Endpoints mínimos
 
@@ -87,6 +88,8 @@ flowchart TD
 | POST | `/v1/donations/{donationId}/simulate` | `api/donations.write` + DONANTE propietario; **solo stage `academic`** | 200 / 401 / 403 / 404 / 409 |
 | GET | `/v1/donations/me` | `api/donations.read` + DONANTE | 200 / 401 |
 | GET | `/v1/audit` | `api/audit.read` + AUDITOR (extensión) | 200 / 401 / 403 |
+| GET | `/v1/reviews` | `api/donations.review` + REVISOR | 200 / 400 / 401 / 403 |
+| POST | `/v1/donations/{donationId}/review` | `api/donations.review` + REVISOR (acción sensible; ni donante ni creador del proyecto) | 200 / 400 / 401 / 403 / 404 / 409 |
 
 - Cabecera `Authorization: Bearer <access_token>`; las rutas protegidas declaran `AuthorizationScopes` en SAM, de modo que un ID token es rechazado.
 - `POST /v1/donations` exige `Idempotency-Key` (UUID) y body `{ projectId, amountCents }`; `donorSub` se toma del contexto del authorizer.
@@ -102,10 +105,19 @@ flowchart TD
 6. Un `TransactWriteItems` actualiza la donación (condición `status = PENDIENTE_SIMULACION` y `donorSub = :sub`) e incrementa `confirmedAmountCents` del proyecto si se confirma.
 7. La UI muestra el resultado; se registran log JSON y `AuditEvent` sin datos sensibles.
 
+### Flujo de revisión (cuatro ojos)
+
+1. Una donación `EN_REVISION` guarda `reviewReasons` (`HOURLY_AMOUNT`, `STRUCTURING`) y aparece en `GET /v1/reviews` (GSI `status-createdAt`, más antiguas primero, con seudónimo del donante).
+2. El REVISOR decide con `motivo`; `withAuth` revalida sesión y grupos (acción sensible) y el handler rechaza con 403 si el revisor es el donante o creó el proyecto (`createdBy`).
+3. Un `UpdateItem` con condición `status = EN_REVISION` deja `PENDIENTE_SIMULACION` (aprobada; el donante la confirma con el paso 6) o `RECHAZADA_REVISION` (terminal), con `reviewDecision`, `reviewMotivo`, `reviewedBy` (seudónimo) y `reviewedAt`; si la condición falla, 409. Se audita `REVIEW_DECISION`.
+4. Un job diario (evento `Schedule` de SAM, regla de EventBridge) consulta el GSI por `createdAt < ahora − ReviewExpiryDays` en páginas de 25, máximo 100 por ejecución, y rechaza cada una con la misma escritura condicional (motivo «Vencida sin revisión», actor `system`, evento `REVIEW_EXPIRED`).
+
+**Roles combinables:** AUDITOR no se combina con ningún otro rol. REVISOR puede ser también GESTOR o DONANTE: los conflictos reales (donación propia, proyecto propio) se deciden por donación; separar por completo REVISOR de GESTOR exigiría más personas de las que tiene una fundación pequeña sin cerrar un riesgo adicional.
+
 ## 5. Modelo de datos y consistencia
 
 - `Projects`: PK `projectId`; GSI `status-createdAt` para el catálogo.
-- `Donations`: PK `donationId`; GSI `donorSub-createdAt` para `GET /me`.
+- `Donations`: PK `donationId`; GSI `donorSub-createdAt` para `GET /me`; GSI `status-createdAt` para la cola de revisión y el vencimiento.
 - `Idempotency`: PK `donorSub#createDonation#idempotencyKey`; atributos `payloadHash` (SHA-256 del body normalizado), `donationId`, `responseStatus`; TTL `expiresAt` (24 h).
 - `AuditEvents`: PK `eventType`, SK `timestamp#eventId` para filtrar por tipo y fecha (HU-10).
 
@@ -147,6 +159,7 @@ flowchart TD
 | Uso de token robado | Vida corta + revocación de refresh token | T13 |
 | Abuso / fuerza bruta | Throttling del stage HTTP API; protecciones de Cognito | Configuración SAM |
 | Ráfagas de un bot / fraccionamiento | Límite por donante y minuto (429) y revisión horaria por monto y por donaciones cercanas al máximo (`EN_REVISION`) | `test/integration/velocity.test.ts` |
+| Revisión sin control / autoaprobación | REVISOR con MFA, acción sensible, cuatro ojos (ni donante ni creador del proyecto), escritura condicional y vencimiento a los 7 días | `test/reviews/*.test.ts`, `test/integration/reviews.test.ts` |
 | XSS / robo de tokens | Tokens en memoria, CSP y cabeceras vía CloudFront | CA-NF11.1–2 |
 | Acceso excesivo a datos | Rol IAM por función con acciones y tablas mínimas | T10, IAM Access Analyzer |
 | Exposición de secretos | Sin secretos en SPA ni repo; secret scanning de GitHub | Repo limpio |

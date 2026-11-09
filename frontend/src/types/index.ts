@@ -16,11 +16,31 @@ export interface Donation {
   donorSub: string;
   amountCents: number;
   currency: "PEN";
-  /** EN_REVISION: held by the anti-abuse velocity controls; it can be neither confirmed nor rejected. */
-  status: "PENDIENTE_SIMULACION" | "CONFIRMADA_SIMULADA" | "RECHAZADA_SIMULADA" | "EN_REVISION";
+  /**
+   * EN_REVISION: held by the anti-abuse velocity controls until a REVISOR decides; it can be neither confirmed nor
+   * rejected by the donor. RECHAZADA_REVISION: rejected by a reviewer (or expired unreviewed); it never counts.
+   */
+  status: "PENDIENTE_SIMULACION" | "CONFIRMADA_SIMULADA" | "RECHAZADA_SIMULADA" | "EN_REVISION" | "RECHAZADA_REVISION";
   createdAt: string;
   updatedAt: string;
 }
+
+/** A held donation as the review queue shows it: never the donor, only a stable pseudonym. */
+export interface ReviewQueueItem {
+  donationId: string;
+  projectId: string;
+  amountCents: number;
+  createdAt: string;
+  reviewReasons?: string[];
+  donorRef: string;
+}
+
+export interface ReviewQueuePage {
+  items: ReviewQueueItem[];
+  nextToken?: string;
+}
+
+export type ReviewDecision = "APROBAR" | "RECHAZAR";
 
 export interface ProjectStats {
   projectId: string;

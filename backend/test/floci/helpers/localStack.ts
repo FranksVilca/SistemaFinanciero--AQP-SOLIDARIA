@@ -21,6 +21,7 @@ export const DEMO_USERS = [
   { email: "donante@aqpsolidaria.pe", group: "DONANTE", role: "Donante (dona a un proyecto y ve su historial)" },
   { email: "gestor@aqpsolidaria.pe", group: "GESTOR", role: "Gestor (crea y publica proyectos)" },
   { email: "auditor@aqpsolidaria.pe", group: "AUDITOR", role: "Auditor (consulta la auditoría)" },
+  { email: "revisor@aqpsolidaria.pe", group: "REVISOR", role: "Revisor (aprueba o rechaza donaciones en revisión)" },
 ] as const;
 
 const DEMO_PROJECTS = [

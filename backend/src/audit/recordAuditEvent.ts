@@ -1,5 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import { ANONYMOUS_ACTOR, type AuditAction, type AuditEventType, type AuditOutcome } from "../shared/constants.js";
+import {
+  ANONYMOUS_ACTOR,
+  SYSTEM_ACTOR,
+  type AuditAction,
+  type AuditEventType,
+  type AuditOutcome,
+} from "../shared/constants.js";
 import { docClient, PutCommand, TABLE_NAMES } from "../shared/dynamo.js";
 
 const PSEUDONYM_PREFIX = "usr_";
@@ -11,6 +17,8 @@ export interface AuditEventInput {
   requestId: string;
   /** Raw identifier of the actor; it is pseudonymized here and never stored. */
   actorSub?: string;
+  /** The system acted on its own (a scheduled job): recorded as SYSTEM_ACTOR instead of a person. */
+  system?: boolean;
   resourceRef: string;
   action: AuditAction;
   outcome: AuditOutcome;
@@ -46,7 +54,7 @@ export async function recordAuditEvent(input: AuditEventInput): Promise<void> {
         timestamp,
         eventType: input.eventType,
         requestId: input.requestId,
-        actorRef: pseudonymizeActor(input.actorSub),
+        actorRef: input.system ? SYSTEM_ACTOR : pseudonymizeActor(input.actorSub),
         resourceRef: input.resourceRef,
         action: input.action,
         outcome: input.outcome,

@@ -1,4 +1,4 @@
-import { Project, Donation } from "../types/index.js";
+import { Project, Donation, ReviewDecision, ReviewQueuePage } from "../types/index.js";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/v1";
 
@@ -81,6 +81,19 @@ export const donationsApi = {
     }),
   getMyHistory: (token: string) =>
     apiFetch<Donation[]>("/donations/me", {
+      token,
+    }),
+};
+
+export const reviewsApi = {
+  list: (token: string, nextToken?: string) =>
+    apiFetch<ReviewQueuePage>(nextToken ? `/reviews?nextToken=${encodeURIComponent(nextToken)}` : "/reviews", {
+      token,
+    }),
+  decide: (donationId: string, decision: ReviewDecision, motivo: string, token: string) =>
+    apiFetch<{ donationId: string; status: Donation["status"] }>(`/donations/${donationId}/review`, {
+      method: "POST",
+      body: JSON.stringify({ decision, motivo }),
       token,
     }),
 };

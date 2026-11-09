@@ -270,6 +270,22 @@ Resources:
             Condition:
               StringEquals:
                 "iam:PassedToService": lambda.amazonaws.com
+          # The daily schedule of the review expiry (a SAM Schedule event is an EventBridge rule named after the stack).
+          - Sid: ScheduleRules
+            Effect: Allow
+            Action:
+              - events:PutRule
+              - events:DeleteRule
+              - events:DescribeRule
+              - events:EnableRule
+              - events:DisableRule
+              - events:PutTargets
+              - events:RemoveTargets
+              - events:ListTargetsByRule
+              - events:TagResource
+              - events:UntagResource
+              - events:ListTagsForResource
+            Resource: !Sub "arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/aqp-solidaria-${StageName}-*"
           - Sid: ApiAndItsRoutes
             Effect: Allow
             Action:

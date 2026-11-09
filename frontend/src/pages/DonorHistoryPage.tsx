@@ -11,11 +11,17 @@ const BADGE_STYLES: Record<Donation["status"], string> = {
   PENDIENTE_SIMULACION: "bg-amber-50 text-amber-700 border-amber-200",
   EN_REVISION: "bg-orange-50 text-orange-700 border-orange-200",
   RECHAZADA_SIMULADA: "bg-red-50 text-red-700 border-red-200",
+  RECHAZADA_REVISION: "bg-rose-50 text-rose-800 border-rose-300",
+};
+
+const BADGE_LABELS: Partial<Record<Donation["status"], string>> = {
+  EN_REVISION: "En revisión",
+  RECHAZADA_REVISION: "Rechazada en revisión",
 };
 
 const DonationStatusBadge: React.FC<{ status: Donation["status"] }> = ({ status }) => (
   <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${BADGE_STYLES[status]}`}>
-    {status === "EN_REVISION" ? "En revisión" : status}
+    {BADGE_LABELS[status] ?? status}
   </span>
 );
 
@@ -93,6 +99,7 @@ export const DonorHistoryPage: React.FC = () => {
         <div className="space-y-4">
           {donations.map((d) => {
             const isUnderReview = d.status === "EN_REVISION";
+            const isRejectedByReview = d.status === "RECHAZADA_REVISION";
 
             return (
               <div
@@ -114,7 +121,13 @@ export const DonorHistoryPage: React.FC = () => {
 
                 {isUnderReview && (
                   <p className="text-xs text-orange-700 mb-1">
-                    Retenida por los controles antifraude: no se sumará al proyecto ni puede simularse.
+                    Retenida por los controles antifraude: un revisor debe aprobarla antes de que pueda simularse.
+                  </p>
+                )}
+
+                {isRejectedByReview && (
+                  <p className="text-xs text-rose-800 mb-1">
+                    Rechazada tras la revisión antifraude: no se sumará al proyecto.
                   </p>
                 )}
 
