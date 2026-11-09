@@ -23,6 +23,17 @@ En cumplimiento de las directivas del curso y la sección §10 de [design.md](./
 
 > **Pendiente de confirmación por el equipo:** esta tabla recoge las herramientas que constan en el repositorio. Si algún integrante usó otra herramienta o modelo de IA, debe añadirla aquí antes de la entrega (design.md, sección 10).
 
+## Aporte con Codex — 2026-11-09
+
+- Herramienta: OpenAI Codex (agente GPT-6); integrante responsable pendiente de confirmación por el equipo.
+- Trabajo asistido: revisión de PR y actualización de `main`; siete escenarios adversos adicionales de donaciones,
+  ejecutados contra DynamoDB Local, y documentación en `evidence/adversarial-donations.md`.
+- Alcance: evasión por cambio de proyecto o cabeceras, inyección de campos, aislamiento entre cuentas,
+  reintentos tras 429 y borde de ventana fija. No se modificaron controles ni umbrales de producción.
+- Validación humana: pendiente de revisión por un integrante distinto del autor antes de integrar.
+- Limitaciones: los claims se construyen en los eventos de prueba y la suite sustituye Cognito userInfo y grupos;
+  no se declara evidencia de JWT, IAM, MFA, cambios reales de IP ni ejecución en AWS.
+
 ## Declaración Ética y de Originalidad
 
 1. Ninguna credencial de producción, clave secreta de AWS ni dato personal real fue compartido o procesado por modelos de inteligencia artificial.
