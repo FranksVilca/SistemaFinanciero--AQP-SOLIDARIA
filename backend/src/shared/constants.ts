@@ -10,6 +10,8 @@ export const DONATION_STATUS = {
   pending: "PENDIENTE_SIMULACION",
   confirmed: "CONFIRMADA_SIMULADA",
   rejected: "RECHAZADA_SIMULADA",
+  /** Recorded but held by the velocity controls: it can be neither confirmed nor rejected by the donor. */
+  underReview: "EN_REVISION",
 } as const;
 
 export const PROJECT_STATUS = {
@@ -18,6 +20,9 @@ export const PROJECT_STATUS = {
 } as const;
 
 export const CURRENCY = "PEN";
+
+/** Largest single donation the API accepts (S/ 1,000.00). */
+export const DONATION_MAX_CENTS = 100_000;
 
 export const IDEMPOTENCY_TTL_SECONDS = 86_400;
 
@@ -72,6 +77,8 @@ export const AUDIT_EVENT_TYPES = {
   donationCreated: "DONATION_CREATED",
   donationTransitioned: "DONATION_TRANSITIONED",
   roleAssigned: "ROLE_ASSIGNED",
+  donationRateLimited: "DONATION_RATE_LIMITED",
+  suspiciousVelocity: "SUSPICIOUS_VELOCITY",
 } as const;
 
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[keyof typeof AUDIT_EVENT_TYPES];

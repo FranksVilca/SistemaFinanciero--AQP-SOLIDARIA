@@ -54,6 +54,7 @@ const MAY_PUT: Record<string, TableKey[]> = {
 };
 const MAY_UPDATE: Record<string, TableKey[]> = {
   "projects/publishProject.handler": ["projects"],
+  "donations/createDonation.handler": ["idempotency"],
   "donations/simulateDonation.handler": ["projects", "donations"],
 };
 

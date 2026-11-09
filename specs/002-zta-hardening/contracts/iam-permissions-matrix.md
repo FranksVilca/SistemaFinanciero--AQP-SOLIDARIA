@@ -11,7 +11,7 @@ Acciones de DynamoDB permitidas. Todo lo no listado está denegado. Sin comodine
 | GetProjectStats | R | | | |
 | CreateProject | P | | | P |
 | PublishProject | U | | | P |
-| CreateDonation | R | P, R | P, R | P |
+| CreateDonation | R | P, R | P, R, U (solo contadores de velocidad `velocity#`) | P |
 | SimulateDonation (solo etapa académica) | U | R, U | | P |
 | GetMyDonations | | R (incluye índice `donorSub-createdAt-index`) | | P (solo denegaciones) |
 | GetAuditEvents | | | | R (`Query`), P (solo denegaciones) |

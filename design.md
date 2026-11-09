@@ -97,7 +97,7 @@ flowchart TD
 1. El usuario inicia sesión en Cognito (Authorization Code + PKCE); la SPA guarda los tokens en memoria.
 2. La SPA envía la intención con access token, `amountCents` e `Idempotency-Key`.
 3. API Gateway valida firma, emisor, expiración, `client_id` y scope; Lambda valida grupo, proyecto PUBLICADO, monto y clave.
-4. Un `TransactWriteItems` crea el `IdempotencyRecord` (condición `attribute_not_exists`) y la donación `PENDIENTE_SIMULACION`.
+4. Un `TransactWriteItems` crea el `IdempotencyRecord` (condición `attribute_not_exists`), la donación `PENDIENTE_SIMULACION` (o `EN_REVISION`, ver 5) y actualiza los contadores de velocidad del donante.
 5. El donante ejecuta la simulación desde una UI rotulada como prueba.
 6. Un `TransactWriteItems` actualiza la donación (condición `status = PENDIENTE_SIMULACION` y `donorSub = :sub`) e incrementa `confirmedAmountCents` del proyecto si se confirma.
 7. La UI muestra el resultado; se registran log JSON y `AuditEvent` sin datos sensibles.
@@ -108,6 +108,8 @@ flowchart TD
 - `Donations`: PK `donationId`; GSI `donorSub-createdAt` para `GET /me`.
 - `Idempotency`: PK `donorSub#createDonation#idempotencyKey`; atributos `payloadHash` (SHA-256 del body normalizado), `donationId`, `responseStatus`; TTL `expiresAt` (24 h).
 - `AuditEvents`: PK `eventType`, SK `timestamp#eventId` para filtrar por tipo y fecha (HU-10).
+
+- **Contadores de velocidad** (misma tabla `Idempotency`, prefijo `velocity#`): por minuto, `ADD donationCount` con condición `donationCount < límite` (429 si falla); por hora, `totalCents` y `nearMaxCount` escritos con concurrencia optimista sobre `windowVersion` (lectura consistente previa). Ambos entran en la misma transacción que la donación: un reintento idempotente o una solicitud limitada no escribe nada. Si el total horario supera el umbral o se alcanza el conteo de donaciones cercanas al máximo, la donación queda `EN_REVISION`, que la simulación rechaza con 409.
 
 **Reglas:** repetir clave con mismo `payloadHash` devuelve la respuesta almacenada; con hash distinto, 409. Si la transacción falla por condición (`TransactionCanceledException`), se responde 409 sin efectos parciales. Nunca representar dinero con `float`. Las lecturas que siguen a una escritura propia usan `ConsistentRead` cuando la consulta es por clave primaria.
 
@@ -144,6 +146,7 @@ flowchart TD
 | Repetición / doble conteo | Idempotencia + transacciones condicionadas | T06–T08 |
 | Uso de token robado | Vida corta + revocación de refresh token | T13 |
 | Abuso / fuerza bruta | Throttling del stage HTTP API; protecciones de Cognito | Configuración SAM |
+| Ráfagas de un bot / fraccionamiento | Límite por donante y minuto (429) y revisión horaria por monto y por donaciones cercanas al máximo (`EN_REVISION`) | `test/integration/velocity.test.ts` |
 | XSS / robo de tokens | Tokens en memoria, CSP y cabeceras vía CloudFront | CA-NF11.1–2 |
 | Acceso excesivo a datos | Rol IAM por función con acciones y tablas mínimas | T10, IAM Access Analyzer |
 | Exposición de secretos | Sin secretos en SPA ni repo; secret scanning de GitHub | Repo limpio |

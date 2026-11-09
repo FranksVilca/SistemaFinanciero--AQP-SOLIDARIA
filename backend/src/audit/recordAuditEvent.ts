@@ -15,6 +15,8 @@ export interface AuditEventInput {
   action: AuditAction;
   outcome: AuditOutcome;
   reason?: string;
+  /** Numeric context of the decision (for example a total and its threshold); never personal data. */
+  details?: Record<string, number>;
 }
 
 /**
@@ -49,6 +51,7 @@ export async function recordAuditEvent(input: AuditEventInput): Promise<void> {
         action: input.action,
         outcome: input.outcome,
         ...(input.reason && { reason: input.reason }),
+        ...(input.details && { details: input.details }),
       },
       ConditionExpression: "attribute_not_exists(auditDay)",
     })

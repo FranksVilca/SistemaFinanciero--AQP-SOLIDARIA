@@ -26,7 +26,8 @@ const MATRIX: Record<string, Partial<Record<Table, string[]>>> = {
   "donations/createDonation.handler": {
     ProjectsTable: READ,
     DonationsTable: [...PUT, ...READ],
-    IdempotencyTable: [...PUT, ...READ],
+    // UpdateItem only for the velocity counters, which live in the idempotency table.
+    IdempotencyTable: [...PUT, ...READ, ...UPDATE],
     AuditTable: PUT,
   },
   "donations/simulateDonation.handler": { ProjectsTable: UPDATE, DonationsTable: [...READ, ...UPDATE], AuditTable: PUT },

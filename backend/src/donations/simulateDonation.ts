@@ -66,6 +66,12 @@ export const handler = withAuth<Donation>(
     if (!donation) throw new NotFoundError("Donación no encontrada");
     const { action } = parseJsonBody(event, SimulateDonationSchema, "La acción debe ser CONFIRMAR o RECHAZAR");
 
+    // Held by the velocity controls: neither outcome is allowed, so it never adds to the project total.
+    if (donation.status === DONATION_STATUS.underReview) {
+      throw new ConflictError(
+        "La donación está en revisión por los controles antifraude y no puede confirmarse ni rechazarse"
+      );
+    }
     if (donation.status !== DONATION_STATUS.pending) {
       throw new ConflictError(`La donación ya se encuentra en estado terminal: ${donation.status}`);
     }

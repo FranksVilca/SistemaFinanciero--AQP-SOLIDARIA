@@ -51,6 +51,24 @@ Parameters:
     Description: >
       Activa Security Hub sin estándares por defecto. Verificar en la consola de la cuenta si aplica una prueba
       de 30 días antes de activarlo; después puede cobrarse.
+  # Controles de velocidad de las donaciones (valores académicos de ejemplo, ver docs/threat-model.md).
+  VelocityMaxPerMinute:
+    Type: Number
+    Default: 5
+    MinValue: 1
+    Description: Máximo de donaciones nuevas por donante en una ventana fija de un minuto; la siguiente recibe HTTP 429.
+  VelocityReviewThresholdCents:
+    Type: Number
+    Default: 500000
+    MinValue: 1
+    Description: >
+      Total por donante en una hora (en céntimos) por encima del cual la donación queda EN_REVISION (500000 = S/ 5,000).
+  VelocityStructuringCount:
+    Type: Number
+    Default: 3
+    MinValue: 1
+    Description: >
+      Cantidad de donaciones de al menos el 90% del máximo en una hora a partir de la cual la donación queda EN_REVISION.
 
 Conditions:
   IsAcademicStage: !Equals [!Ref StageName, 'academic']
@@ -655,6 +673,11 @@ Resources:
     Properties:
       CodeUri: ../backend/dist/
       Handler: donations/createDonation.handler
+      Environment:
+        Variables:
+          VELOCITY_MAX_PER_MINUTE: !Ref VelocityMaxPerMinute
+          VELOCITY_REVIEW_THRESHOLD_CENTS: !Ref VelocityReviewThresholdCents
+          VELOCITY_STRUCTURING_COUNT: !Ref VelocityStructuringCount
       Policies:
         - Version: '2012-10-17'
           Statement:
@@ -668,6 +691,10 @@ Resources:
               Resource:
                 - !GetAtt DonationsTable.Arn
                 - !GetAtt IdempotencyTable.Arn
+            # Velocity counters (velocity#...) live in the idempotency table; only that table is updated.
+            - Effect: Allow
+              Action: dynamodb:UpdateItem
+              Resource: !GetAtt IdempotencyTable.Arn
             - Effect: Allow
               Action: dynamodb:PutItem
               Resource: !GetAtt AuditTable.Arn

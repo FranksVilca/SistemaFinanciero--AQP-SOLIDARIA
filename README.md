@@ -113,6 +113,8 @@ sam deploy --guided \
 
 Los parámetros opcionales (GuardDuty y Security Hub con prueba de 30 días, PITR, CloudTrail) y lo que queda fuera del plan gratuito están en [docs/free-plan-guide.md](docs/free-plan-guide.md).
 
+Los controles de velocidad de las donaciones se ajustan con `VelocityMaxPerMinute` (5), `VelocityReviewThresholdCents` (500000 = S/ 5,000) y `VelocityStructuringCount` (3); solo `CreateDonationFunction` los recibe como variables de entorno. Sus límites están en [docs/threat-model.md](docs/threat-model.md).
+
 ### Paso 3: Construir y Publicar Frontend
 
 Un solo comando toma del stack ya desplegado la dirección del API y los identificadores de Cognito, compila el

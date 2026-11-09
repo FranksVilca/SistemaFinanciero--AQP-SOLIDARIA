@@ -78,12 +78,14 @@ Prioridad: **MVP** = obligatorio; **Extensión** = puntos adicionales, no necesa
 - **CA-05.3:** El `donorSub` se obtiene de la identidad autenticada, nunca del cuerpo de la solicitud.
 - **CA-05.4:** Reenviar la misma clave con la misma carga devuelve el mismo resultado sin crear otra donación; reutilizarla con carga distinta devuelve HTTP 409. El registro de la clave y la donación se escriben de forma atómica.
 - **CA-05.5:** No se solicitan datos de tarjeta, CVV, cuenta bancaria, DNI ni datos de pago reales.
+- **CA-05.6 (controles de velocidad):** Un donante puede registrar como máximo 5 donaciones nuevas por minuto (ventana fija); la siguiente recibe HTTP 429 y se audita `DONATION_RATE_LIMITED`. Si el total del donante en la hora supera S/ 5,000, o si acumula 3 donaciones de al menos el 90% del máximo en la hora (fraccionamiento), la donación se registra en `EN_REVISION` y se audita `SUSPICIOUS_VELOCITY`. Los reintentos idempotentes no consumen cupo ni suman al total. Los umbrales son parámetros de la plantilla.
 
 **HU-06 — Simular confirmación (MVP).** Como donante quiero comprobar el resultado de mi contribución en un flujo de prueba.
 
 - **CA-06.1:** El endpoint de simulación permite pasar una donación **propia** de `PENDIENTE_SIMULACION` a `CONFIRMADA_SIMULADA` o `RECHAZADA_SIMULADA`, y **solo se despliega en el stage académico** (condición en la plantilla SAM); en otro stage la ruta no existe.
 - **CA-06.2:** Solo la primera transición válida modifica el monto confirmado; solicitudes repetidas o concurrentes no alteran el total (HTTP 409 en transición inválida).
 - **CA-06.3:** Una donación rechazada no incrementa cifras agregadas.
+- **CA-06.5:** Una donación `EN_REVISION` no puede confirmarse ni rechazarse (HTTP 409), por lo que nunca suma al proyecto.
 - **CA-06.4:** La UI muestra **«Simulación académica: no se ha realizado ningún cobro»**.
 
 **HU-07 — Ver historial propio (MVP).** Como donante quiero consultar mis donaciones simuladas para verificar su estado.
@@ -165,7 +167,8 @@ Prioridad: **MVP** = obligatorio; **Extensión** = puntos adicionales, no necesa
 ## 4. Modelo de datos lógico mínimo
 
 - `Project`: `projectId`, `title`, `description`, `goalAmountCents`, `confirmedAmountCents`, `currency=PEN`, `status` (`BORRADOR`, `PUBLICADO`), `createdAt`, `updatedAt`.
-- `Donation`: `donationId`, `projectId`, `donorSub`, `amountCents`, `currency=PEN`, `status` (`PENDIENTE_SIMULACION`, `CONFIRMADA_SIMULADA`, `RECHAZADA_SIMULADA`), `createdAt`, `updatedAt`.
+- `Donation`: `donationId`, `projectId`, `donorSub`, `amountCents`, `currency=PEN`, `status` (`PENDIENTE_SIMULACION`, `CONFIRMADA_SIMULADA`, `RECHAZADA_SIMULADA`, `EN_REVISION`), `createdAt`, `updatedAt`.
+- `VelocityCounter` (en la tabla de idempotencia): `pk = velocity#donorSub#minute#yyyyMMddHHmm` con `donationCount`, y `pk = velocity#donorSub#hour#yyyyMMddHH` con `totalCents`, `nearMaxCount`, `windowVersion`; `expiresAt` (TTL).
 - `IdempotencyRecord`: `pk = donorSub#createDonation#idempotencyKey`, `payloadHash`, `donationId`, `responseStatus`, `expiresAt` (TTL).
 - `AuditEvent`: `eventId`, `timestamp`, `requestId`, `actorRef` (seudónimo), `action`, `resourceRef`, `outcome`.
 

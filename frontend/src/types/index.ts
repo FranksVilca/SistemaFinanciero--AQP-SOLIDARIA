@@ -16,7 +16,8 @@ export interface Donation {
   donorSub: string;
   amountCents: number;
   currency: "PEN";
-  status: "PENDIENTE_SIMULACION" | "CONFIRMADA_SIMULADA" | "RECHAZADA_SIMULADA";
+  /** EN_REVISION: held by the anti-abuse velocity controls; it can be neither confirmed nor rejected. */
+  status: "PENDIENTE_SIMULACION" | "CONFIRMADA_SIMULADA" | "RECHAZADA_SIMULADA" | "EN_REVISION";
   createdAt: string;
   updatedAt: string;
 }

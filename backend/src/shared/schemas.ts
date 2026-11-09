@@ -1,10 +1,16 @@
 import { z } from "zod";
+import { DONATION_MAX_CENTS } from "./constants.js";
 
 export const CurrencySchema = z.literal("PEN");
 
 export const ProjectStatusSchema = z.enum(["BORRADOR", "PUBLICADO"]);
 
-export const DonationStatusSchema = z.enum(["PENDIENTE_SIMULACION", "CONFIRMADA_SIMULADA", "RECHAZADA_SIMULADA"]);
+export const DonationStatusSchema = z.enum([
+  "PENDIENTE_SIMULACION",
+  "CONFIRMADA_SIMULADA",
+  "RECHAZADA_SIMULADA",
+  "EN_REVISION",
+]);
 
 export const AuditOutcomeSchema = z.enum(["SUCCESS", "DENIED", "FAILED"]);
 
@@ -32,7 +38,7 @@ export const CreateDonationSchema = z.object({
     .number()
     .int("El monto debe ser un número entero de céntimos")
     .min(100, "Monto mínimo S/ 1.00 (100 céntimos)")
-    .max(100000, "Monto máximo S/ 1,000.00 (100,000 céntimos)"),
+    .max(DONATION_MAX_CENTS, "Monto máximo S/ 1,000.00 (100,000 céntimos)"),
 });
 
 export const SimulateDonationSchema = z.object({

@@ -51,3 +51,9 @@ export class ValidationError extends AppError {
     super(message, 400, "BAD_REQUEST");
   }
 }
+
+export class TooManyRequestsError extends AppError {
+  constructor(message = "Demasiadas donaciones en poco tiempo; intente nuevamente en un minuto") {
+    super(message, 429, "TOO_MANY_REQUESTS");
+  }
+}

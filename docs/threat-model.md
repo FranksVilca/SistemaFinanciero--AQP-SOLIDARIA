@@ -38,4 +38,12 @@
 | **Repudiation (Repudio)** | Negar haber creado o publicado un proyecto | Tabla `AuditEvents` registra actor seudonimizado, acción, recurso y timestamp | HU-10, T046 |
 | **Information Disclosure (Filtración)** | Acceso a donaciones privadas de otros usuarios (BOLA) | Validación de ownership `donorSub === jwt.sub` en Lambda y consultas aisladas por GSI | T09, T12 |
 | **Denial of Service (Denegación)** | Replays concurrentes para duplicar confirmaciones | `TransactWriteItems` con condición atómica; 10 solicitudes concurrentes dejan 1 éxito y 9 conflictos | T06, T07, T08 |
+| **Denial of Service / fraude** | Bot que registra ráfagas de donaciones; fraccionamiento de un monto grande en donaciones pequeñas | Contadores atómicos por donante en la tabla de idempotencia: máximo 5 donaciones nuevas por minuto (HTTP 429, evento `DONATION_RATE_LIMITED`) y revisión horaria: más de S/ 5,000 o 3 donaciones de al menos el 90% del máximo dejan la donación `EN_REVISION` (evento `SUSPICIOUS_VELOCITY`), que no puede confirmarse | `test/integration/velocity.test.ts`, `test/donations/` |
 | **Elevation of Privilege (Escalación)** | Donante intentando publicar o crear proyectos | EnforceAuthz valida `cognito:groups` en backend; botones ocultos en UI son solo conveniencia UX | T03 |
+
+## Límites de los controles de velocidad
+
+- Las ventanas son fijas (minuto y hora UTC): en el borde de una ventana un donante puede registrar hasta el doble del límite en poco tiempo (5 al final de un minuto y 5 al inicio del siguiente).
+- Los controles son por cuenta (`sub`): no detectan a una misma persona que reparte las donaciones entre varias cuentas.
+- Los umbrales (5 por minuto, S/ 5,000 por hora, 3 donaciones cercanas al máximo) son ejemplos académicos y se cambian con parámetros de la plantilla.
+- `EN_REVISION` solo retiene la donación: no existe todavía un flujo para que un revisor la libere o la rechace, y el reporte a la UIF-Perú u otra autoridad queda fuera del alcance.

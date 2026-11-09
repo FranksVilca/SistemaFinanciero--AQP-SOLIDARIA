@@ -138,7 +138,9 @@ paths:
   /donations:
     post:
       summary: Registrar intención de donación simulada (solo DONANTE)
-      description: Registra una intención de donación en estado PENDIENTE_SIMULACION. Requiere cabecera Idempotency-Key.
+      description: >-
+        Registra una intención de donación en estado PENDIENTE_SIMULACION, o EN_REVISION si supera los controles de
+        velocidad del donante en la hora. Requiere cabecera Idempotency-Key.
       operationId: createDonation
       security:
         - CognitoJWT:
@@ -175,6 +177,12 @@ paths:
           $ref: '#/components/responses/404NotFound'
         '409':
           description: Conflicto de idempotencia (clave reutilizada con payload distinto) o proyecto no PUBLICADO
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Límite de donaciones nuevas por donante y minuto alcanzado (TOO_MANY_REQUESTS)
           content:
             application/json:
               schema:
@@ -218,7 +226,7 @@ paths:
         '404':
           $ref: '#/components/responses/404NotFound'
         '409':
-          description: Transición inválida o donación ya confirmada/rechazada
+          description: Transición inválida, donación ya confirmada/rechazada o donación EN_REVISION
           content:
             application/json:
               schema:
@@ -448,7 +456,7 @@ components:
           enum: [PEN]
         status:
           type: string
-          enum: [PENDIENTE_SIMULACION, CONFIRMADA_SIMULADA, RECHAZADA_SIMULADA]
+          enum: [PENDIENTE_SIMULACION, CONFIRMADA_SIMULADA, RECHAZADA_SIMULADA, EN_REVISION]
         createdAt:
           type: string
           format: date-time

@@ -25,6 +25,8 @@ const AUDIT_EVENT_TYPES = [
   "DONATION_CREATED",
   "DONATION_TRANSITIONED",
   "ROLE_ASSIGNED",
+  "DONATION_RATE_LIMITED",
+  "SUSPICIOUS_VELOCITY",
 ];
 
 export const AuditorPage: React.FC = () => {
