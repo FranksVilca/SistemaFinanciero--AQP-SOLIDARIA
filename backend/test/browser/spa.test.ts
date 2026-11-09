@@ -6,7 +6,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from "playwrig
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DEMO_PASSWORD, bootLocalStack, type LocalStack } from "../floci/helpers/localStack.js";
 import { signInSettings } from "../floci/helpers/gateway.js";
-import { hostedSignIn } from "../floci/helpers/cognitoUsers.js";
+import { createUserInGroup, hostedSignIn } from "../floci/helpers/cognitoUsers.js";
 import { deleteStack } from "../floci/helpers/stack.js";
 import {
   emulatorContentSecurityPolicy,
@@ -148,7 +148,10 @@ describe.each(SITES)("SPA served as: %s", (kind) => {
   it("supports the donation journey at 375px with modal focus, Escape and cent amounts", async () => {
     const { context, page, watched } = await newPage();
     try {
-      await signIn(page, "donante@aqpsolidaria.pe");
+      // The two serving modes share a stack. Keep this test's donation out of the demo donor's minute quota.
+      const email = `qa-mobile-${kind.replace(/ /g, "-")}@aqpsolidaria.pe`;
+      await createUserInGroup(stack.pool, email, "DONANTE");
+      await signIn(page, email);
       await page.setViewportSize({ width: 375, height: 812 });
       const capture = async (name: string) => {
         const directory = resolve(REPOSITORY_ROOT, ".local/qa", kind.replace(/ /g, "-"));

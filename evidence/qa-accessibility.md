@@ -26,6 +26,10 @@ completa duró 184,74 s. Typecheck de backend/frontend sin errores; ESLint sobre
 (se conserva la advertencia de tamaño del componente). La prueba nueva recorrió ocho Tab seguidos y ocho
 Shift+Tab, además de Escape y retorno de foco. Se inspeccionaron visualmente las cuatro capturas del build.
 
+El caso móvil crea una cuenta DONANTE independiente por modo. El build y Vite comparten stack: reutilizar la cuenta
+de demostración para todos los casos añadía seis donaciones y podía agotar el cupo de cinco por minuto en un runner
+rápido. Se aísla el dato de prueba; no se elevan ni desactivan los límites de seguridad.
+
 Capturas conservadas: [catálogo](qa-mobile/catalog-375.png), [detalle](qa-mobile/detail-375.png),
 [donación](qa-mobile/donation-375.png), [confirmación](qa-mobile/confirmation-375.png).
 
