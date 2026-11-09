@@ -52,7 +52,9 @@ const DONOR_REF_DOMAIN = "review-queue:";
 
 /** Stable pseudonym of a donor inside the review queue only. */
 export function donorRefOf(donorSub: string): string {
-  const digest = createHash("sha256").update(DONOR_REF_DOMAIN + donorSub).digest("hex");
+  const digest = createHash("sha256")
+    .update(DONOR_REF_DOMAIN + donorSub)
+    .digest("hex");
   return DONOR_REF_PREFIX + digest.slice(0, DONOR_REF_HEX_LENGTH);
 }
 
