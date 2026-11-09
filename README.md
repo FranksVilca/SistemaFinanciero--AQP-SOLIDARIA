@@ -12,7 +12,7 @@ Sistema cloud-native serverless de publicación de causas sociales y registro de
 
 - **Policy Enforcement Point (PEP)**: API Gateway HTTP API con JWT Authorizer nativo y validación de scopes OAuth + CloudFront con Content Security Policy (CSP) restrictiva.
 - **Policy Decision Point (PDP)**: Cómputo en AWS Lambda (Node.js 24) con roles IAM de mínimo privilegio por función; módulo `authz` embebido (RBAC + validación de ownership), siempre invocado a través de `withAuth()`: una prueba falla si una ruta del template no lo usa. Amazon Verified Permissions con Cedar es la **fase 2** y hoy no está conectado (ver `policies/README.md`).
-- **Policy Administrator (PA)**: Amazon Cognito User Pool con Authorization Code Grant + PKCE, tokens de vida corta ($\le 15$ min) guardados en memoria y MFA TOTP obligatorio para todo el pool (Cognito no lo aplica por grupo, así que también los donantes enrolan un autenticador una vez). Las acciones sensibles (publicar, ver auditoría, confirmar una donación) revalidan la sesión contra Cognito.
+- **Policy Administrator (PA)**: Amazon Cognito User Pool con Authorization Code Grant + PKCE, tokens de vida corta ($\le 15$ min) guardados en memoria y MFA TOTP obligatorio para todo el pool (Cognito no lo aplica por grupo, así que también los donantes enrolan un autenticador una vez). Las acciones sensibles (publicar, ver auditoría, confirmar una donación, decidir una revisión) revalidan la sesión contra Cognito.
 - **Integridad e Idempotencia**: Amazon DynamoDB (On-Demand) con `TransactWriteItems` para reserva de clave de idempotencia (UUID) y control estricto de concurrencia (T08: 10 peticiones paralelas $\to$ 1 éxito, 9 conflictos).
 
 ---
@@ -113,6 +113,10 @@ sam deploy --guided \
 
 Los parámetros opcionales (GuardDuty y Security Hub con prueba de 30 días, PITR, CloudTrail) y lo que queda fuera del plan gratuito están en [docs/free-plan-guide.md](docs/free-plan-guide.md).
 
+Los controles de velocidad de las donaciones se ajustan con `VelocityMaxPerMinute` (5), `VelocityReviewThresholdCents` (500000 = S/ 5,000) y `VelocityStructuringCount` (3); solo `CreateDonationFunction` los recibe como variables de entorno. Sus límites están en [docs/threat-model.md](docs/threat-model.md).
+
+Las donaciones que esos controles dejan `EN_REVISION` las resuelve una persona del grupo `REVISOR` (página «Revisión»): aprueba (vuelve a `PENDIENTE_SIMULACION`) o rechaza (`RECHAZADA_REVISION`) con un motivo obligatorio, nunca sobre una donación propia ni de un proyecto que creó, y AUDITOR no puede ser también REVISOR. `ReviewExpiryDays` (7) fija cuántos días puede quedar una donación sin revisar antes de que el job diario `ExpireReviewsFunction` la rechace. El grupo `REVISOR`, como `GESTOR` y `AUDITOR`, lo asigna un administrador.
+
 ### Paso 3: Construir y Publicar Frontend
 
 Un solo comando toma del stack ya desplegado la dirección del API y los identificadores de Cognito, compila el
@@ -172,6 +176,8 @@ nombres de la aplicación (`aqp-solidaria-academic-*`), que no incluyen a los do
 
 - Quien pueda subir a `main` controla lo que CloudFormation crea en ese espacio de nombres, incluidos roles de función
   con cualquier permiso. Proteja `main` en GitHub con revisión obligatoria de pull requests.
+- El job de vencimiento de revisiones usa una regla de EventBridge (`events:*` sobre `rule/aqp-solidaria-<stage>-*`):
+  tras actualizar a esta versión, vuelva a desplegar la plantilla de arranque antes del primer despliegue del CI.
 - GuardDuty y Security Hub no están cubiertos: si se activan con sus parámetros, el despliegue falla con `AccessDenied`
   hasta que se agreguen sus permisos en la plantilla de arranque. La etapa `production` no se despliega desde el CI.
 - La lista de permisos sale de los esquemas oficiales de cada tipo de recurso y no se ha podido ejecutar en una cuenta

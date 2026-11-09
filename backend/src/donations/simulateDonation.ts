@@ -7,6 +7,7 @@ import { DYNAMO_ERROR, isDynamoError } from "../shared/dynamoErrors.js";
 import { ConflictError, NotFoundError } from "../shared/errors.js";
 import { logInfo } from "../shared/logger.js";
 import { parseJsonBody, requirePathParameter } from "../shared/request.js";
+import { toDonorView } from "../shared/donationView.js";
 import { buildSuccessResponse } from "../shared/response.js";
 import { SimulateDonationSchema, type SimulateDonationInput } from "../shared/schemas.js";
 
@@ -66,6 +67,12 @@ export const handler = withAuth<Donation>(
     if (!donation) throw new NotFoundError("Donación no encontrada");
     const { action } = parseJsonBody(event, SimulateDonationSchema, "La acción debe ser CONFIRMAR o RECHAZAR");
 
+    // Held by the velocity controls: neither outcome is allowed, so it never adds to the project total.
+    if (donation.status === DONATION_STATUS.underReview) {
+      throw new ConflictError(
+        "La donación está en revisión por los controles antifraude y no puede confirmarse ni rechazarse"
+      );
+    }
     if (donation.status !== DONATION_STATUS.pending) {
       throw new ConflictError(`La donación ya se encuentra en estado terminal: ${donation.status}`);
     }
@@ -82,7 +89,7 @@ export const handler = withAuth<Donation>(
 
     const newStatus = action === "CONFIRMAR" ? DONATION_STATUS.confirmed : DONATION_STATUS.rejected;
     logInfo("Donation transitioned", { requestId, donationId: donation.donationId, newStatus });
-    return buildSuccessResponse({ ...donation, status: newStatus, updatedAt: now });
+    return buildSuccessResponse(toDonorView({ ...donation, status: newStatus, updatedAt: now }));
   },
   {
     action: AUTHZ_ACTIONS.simulateDonation,

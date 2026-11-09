@@ -23,6 +23,7 @@ interface TemplateStatement {
   Effect: string;
   Action: string | string[];
   Resource: Json;
+  Condition?: Json;
 }
 
 /** Turns the inline policies of a SAM function into one IAM policy document with concrete ARNs. */
@@ -36,6 +37,8 @@ export function buildPolicyDocument(policies: Json[], arns: TableArns): string {
       Resource: (Array.isArray(statement.Resource) ? statement.Resource : [statement.Resource]).map((resource) =>
         resolveArn(resource, arns)
       ),
+      // Kept as written: a condition (for example the velocity# key prefix) is part of what the function is granted.
+      ...(statement.Condition !== undefined && { Condition: statement.Condition }),
     })),
   });
 }

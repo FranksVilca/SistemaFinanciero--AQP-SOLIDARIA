@@ -1,9 +1,9 @@
-import React, { useState } from "react";
-import { Project, formatPEN } from "../types/index.js";
+import React, { useRef, useState } from "react";
+import { Donation, Project, formatPEN } from "../types/index.js";
 import { useQueryClient } from "@tanstack/react-query";
 import { donationsApi } from "../services/apiClient.js";
 import { useAuth } from "../auth/AuthContext.js";
-import { X, ShieldAlert, CheckCircle2, Loader2 } from "lucide-react";
+import { X, ShieldAlert, CheckCircle2, Clock, Loader2 } from "lucide-react";
 
 interface DonationModalProps {
   isOpen: boolean;
@@ -16,8 +16,11 @@ export const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, p
   const queryClient = useQueryClient();
   const [amountSoles, setAmountSoles] = useState<string>("50");
   const [isLoading, setIsLoading] = useState(false);
-  const [successDonationId, setSuccessDonationId] = useState<string | null>(null);
+  const [created, setCreated] = useState<Pick<Donation, "donationId" | "status"> | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // One key per submission: a retry of the same request (a 503, a lost response) must reuse it so the server answers
+  // with the donation it already created instead of making a second one. It changes when the request changes.
+  const attempt = useRef<{ fingerprint: string; key: string } | null>(null);
 
   if (!isOpen) return null;
 
@@ -37,8 +40,11 @@ export const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, p
     }
 
     const amountCents = Math.round(numericSoles * 100);
-    // Generate new UUID v4 for idempotency
-    const idempotencyKey = crypto.randomUUID();
+    const fingerprint = `${project.projectId}:${amountCents}`;
+    if (attempt.current?.fingerprint !== fingerprint) {
+      attempt.current = { fingerprint, key: crypto.randomUUID() };
+    }
+    const idempotencyKey = attempt.current.key;
 
     setIsLoading(true);
     try {
@@ -47,7 +53,8 @@ export const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, p
         user.access_token,
         idempotencyKey
       );
-      setSuccessDonationId(result.donationId);
+      setCreated({ donationId: result.donationId, status: result.status });
+      attempt.current = null;
       // The history may already be cached from an earlier visit; it must show this donation.
       queryClient.invalidateQueries({ queryKey: ["my-donations"] });
     } catch (err: any) {
@@ -74,24 +81,40 @@ export const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, p
           <X className="w-5 h-5" />
         </button>
 
-        {successDonationId ? (
+        {created ? (
           <div className="text-center py-6">
-            <CheckCircle2 className="w-14 h-14 text-emerald-500 mx-auto mb-3" />
-            <h3 className="text-xl font-bold text-slate-900 mb-2">¡Intención Registrada!</h3>
-            <p className="text-sm text-slate-600 mb-4">
-              Tu intención de aporte por{" "}
-              <strong>{formatPEN(Math.round(parseFloat(amountSoles) * 100))}</strong> para{" "}
-              <em>{project.title}</em> ha sido registrada en estado{" "}
-              <span className="font-semibold text-amber-600">PENDIENTE_SIMULACION</span>.{" "}
-              Para completarla, entra a <strong>Mis Donaciones</strong> y pulsa <strong>Simular Aprobación</strong>.
-            </p>
+            {created.status === "EN_REVISION" ? (
+              <>
+                <Clock className="w-14 h-14 text-amber-500 mx-auto mb-3" />
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Intención retenida para revisión</h3>
+                <p className="text-sm text-slate-600 mb-4">
+                  Tu intención de aporte por <strong>{formatPEN(Math.round(parseFloat(amountSoles) * 100))}</strong>{" "}
+                  para <em>{project.title}</em> quedó registrada, pero{" "}
+                  <span className="font-semibold text-amber-600">fue retenida por los controles de seguridad</span>.
+                  Un revisor la evaluará: mientras tanto no se suma al proyecto y no puede simularse. Podrás ver el
+                  resultado en <strong>Mis Donaciones</strong>.
+                </p>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-14 h-14 text-emerald-500 mx-auto mb-3" />
+                <h3 className="text-xl font-bold text-slate-900 mb-2">¡Intención Registrada!</h3>
+                <p className="text-sm text-slate-600 mb-4">
+                  Tu intención de aporte por{" "}
+                  <strong>{formatPEN(Math.round(parseFloat(amountSoles) * 100))}</strong> para{" "}
+                  <em>{project.title}</em> ha sido registrada en estado{" "}
+                  <span className="font-semibold text-amber-600">{created.status}</span>.{" "}
+                  Para completarla, entra a <strong>Mis Donaciones</strong> y pulsa <strong>Simular Aprobación</strong>.
+                </p>
+              </>
+            )}
             <div className="bg-slate-50 p-3 rounded-lg text-xs font-mono text-slate-500 mb-6 break-all">
-              ID: {successDonationId}
+              ID: {created.donationId}
             </div>
             <button
               type="button"
               onClick={() => {
-                setSuccessDonationId(null);
+                setCreated(null);
                 onClose();
               }}
               className="w-full py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700"

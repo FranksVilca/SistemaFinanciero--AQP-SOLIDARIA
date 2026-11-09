@@ -54,6 +54,7 @@ const MAY_PUT: Record<string, TableKey[]> = {
 };
 const MAY_UPDATE: Record<string, TableKey[]> = {
   "projects/publishProject.handler": ["projects"],
+  "donations/createDonation.handler": ["idempotency"],
   "donations/simulateDonation.handler": ["projects", "donations"],
 };
 
@@ -166,6 +167,28 @@ describe("each handler works with the minimal permissions of its own role", () =
   });
 });
 
+describe("the counters grant of createDonation is limited to the velocity# partition keys", () => {
+  const update = (key: string) =>
+    errorNameOf(
+      clientAs("donations/createDonation.handler").send(
+        new UpdateItemCommand({
+          TableName: TABLES.idempotency.name,
+          Key: TABLES.idempotency.key(key),
+          UpdateExpression: "ADD donationCount :one",
+          ExpressionAttributeValues: { ":one": { N: "1" } },
+        })
+      )
+    );
+
+  it("may update a velocity counter", async () => {
+    expect(await update(`velocity#${randomUUID()}#minute#202601010000`)).not.toBe(ACCESS_DENIED);
+  });
+
+  it("may not update an idempotency record, even though it may create one", async () => {
+    expect(await update(`${randomUUID()}#createDonation#${randomUUID()}`)).toBe(ACCESS_DENIED);
+  });
+});
+
 describe("everything outside the contract of a role is denied (T10)", () => {
   const handlers = Object.keys(MAY_PUT);
   const tables = Object.keys(TABLES) as TableKey[];
@@ -177,11 +200,13 @@ describe("everything outside the contract of a role is denied (T10)", () => {
     const id = randomUUID();
 
     const put = await errorNameOf(client.send(new PutItemCommand({ TableName: name, Item: key(id) })));
+    // The only UpdateItem grant on this table is limited to the velocity# partition keys (see the block below).
+    const updateKey = table === "idempotency" ? TABLES.idempotency.key(`velocity#${id}`) : key(id);
     const update = await errorNameOf(
       client.send(
         new UpdateItemCommand({
           TableName: name,
-          Key: key(id),
+          Key: updateKey,
           UpdateExpression: "SET touchedAt = :now",
           ExpressionAttributeValues: { ":now": { S: "now" } },
         })

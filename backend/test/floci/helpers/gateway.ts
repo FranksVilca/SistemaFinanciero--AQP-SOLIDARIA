@@ -42,16 +42,19 @@ const gateway = new ApiGatewayV2Client({
 
 export function routesOfTemplate(): Route[] {
   return lambdaFunctions(loadTemplate("academic")).flatMap(([, definition]) =>
-    eventsOf(definition).map(([, event]) => {
-      const properties = propertiesOf(event);
-      const auth = (properties.Auth ?? {}) as JsonObject;
-      return {
-        method: String(properties.Method),
-        templatePath: String(properties.Path),
-        path: String(properties.Path).replace(/\{\w+\}/g, "example"),
-        isProtected: auth.Authorizer !== "NONE",
-      };
-    })
+    // HTTP routes only: a scheduled job's event (Schedule) is not a route of the API.
+    eventsOf(definition)
+      .filter(([, event]) => event.Type === "HttpApi")
+      .map(([, event]) => {
+        const properties = propertiesOf(event);
+        const auth = (properties.Auth ?? {}) as JsonObject;
+        return {
+          method: String(properties.Method),
+          templatePath: String(properties.Path),
+          path: String(properties.Path).replace(/\{\w+\}/g, "example"),
+          isProtected: auth.Authorizer !== "NONE",
+        };
+      })
   );
 }
 

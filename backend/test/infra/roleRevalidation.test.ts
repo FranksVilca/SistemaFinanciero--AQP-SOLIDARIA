@@ -18,6 +18,7 @@ const SENSITIVE_HANDLERS = [
   "projects/publishProject.handler",
   "audit/getAuditEvents.handler",
   "donations/simulateDonation.handler",
+  "reviews/reviewDonation.handler",
 ];
 const LIST_GROUPS = "cognito-idp:AdminListGroupsForUser";
 

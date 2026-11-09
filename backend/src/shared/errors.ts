@@ -1,12 +1,15 @@
 export class AppError extends Error {
   public readonly statusCode: number;
   public readonly code: string;
+  /** Extra response headers the error carries (for example Retry-After). */
+  public readonly headers: Record<string, string>;
 
-  constructor(message: string, statusCode = 500, code = "INTERNAL_SERVER_ERROR") {
+  constructor(message: string, statusCode = 500, code = "INTERNAL_SERVER_ERROR", headers: Record<string, string> = {}) {
     super(message);
     this.name = this.constructor.name;
     this.statusCode = statusCode;
     this.code = code;
+    this.headers = headers;
   }
 }
 
@@ -49,5 +52,18 @@ export class ConflictError extends AppError {
 export class ValidationError extends AppError {
   constructor(message = "Parámetros de solicitud inválidos") {
     super(message, 400, "BAD_REQUEST");
+  }
+}
+
+export class TooManyRequestsError extends AppError {
+  constructor(message = "Demasiadas donaciones en poco tiempo; intente nuevamente en un minuto") {
+    super(message, 429, "TOO_MANY_REQUESTS");
+  }
+}
+
+/** Transient: the request did not change anything and can be repeated as is (with the same Idempotency-Key). */
+export class ServiceUnavailableError extends AppError {
+  constructor(message: string, retryAfterSeconds: number) {
+    super(message, 503, "SERVICE_UNAVAILABLE", { "Retry-After": String(retryAfterSeconds) });
   }
 }

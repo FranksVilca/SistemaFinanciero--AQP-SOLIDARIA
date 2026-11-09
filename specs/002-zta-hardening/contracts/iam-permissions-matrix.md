@@ -11,15 +11,18 @@ Acciones de DynamoDB permitidas. Todo lo no listado está denegado. Sin comodine
 | GetProjectStats | R | | | |
 | CreateProject | P | | | P |
 | PublishProject | U | | | P |
-| CreateDonation | R | P, R | P, R | P |
+| CreateDonation | R | P, R | P, R, U (solo contadores de velocidad `velocity#`, impuesto por `dynamodb:LeadingKeys` con `ForAllValues:StringLike` `velocity#*`) | P |
 | SimulateDonation (solo etapa académica) | U | R, U | | P |
 | GetMyDonations | | R (incluye índice `donorSub-createdAt-index`) | | P (solo denegaciones) |
 | GetAuditEvents | | | | R (`Query`), P (solo denegaciones) |
+| ListReviews | | R (`Query` sobre el índice `status-createdAt-index`) | | P (solo denegaciones) |
+| ReviewDonation | R (`GetItem`, creador del proyecto) | R (`GetItem`), U | | P |
+| ExpireReviews (job programado, sin ruta) | | R (`Query` sobre `status-createdAt-index`), U | | P (el evento `REVIEW_EXPIRED`) |
 | AddDonorToGroup (disparador de Cognito, sin ruta) | | | | P (el evento `ROLE_ASSIGNED`) |
 
 ## Cognito
 
-Una sola acción, `cognito-idp:AdminListGroupsForUser`, sobre el pool de usuarios del stack, solo para `PublishProject`, `SimulateDonation` y `GetAuditEvents` (las acciones sensibles releen los grupos de la persona, porque un token conserva los de cuando se emitió). `AddDonorToGroup` tiene una sola, `cognito-idp:AdminAddUserToGroup`, sobre el mismo pool, en una política `AWS::IAM::Policy` aparte (el pool la nombra como disparador, así que una política en línea que nombrara al pool formaría un ciclo). Ninguna otra función tiene permisos de `cognito-idp`. Lo verifica `backend/test/infra/identityTrigger.test.ts`. Lo verifica `backend/test/infra/roleRevalidation.test.ts` y, con IAM activo, `backend/test/floci/roleRevalidation.test.ts`.
+Una sola acción, `cognito-idp:AdminListGroupsForUser`, sobre el pool de usuarios del stack, solo para `PublishProject`, `SimulateDonation`, `GetAuditEvents` y `ReviewDonation` (las acciones sensibles releen los grupos de la persona, porque un token conserva los de cuando se emitió). `AddDonorToGroup` tiene una sola, `cognito-idp:AdminAddUserToGroup`, sobre el mismo pool, en una política `AWS::IAM::Policy` aparte (el pool la nombra como disparador, así que una política en línea que nombrara al pool formaría un ciclo). Ninguna otra función tiene permisos de `cognito-idp`. Lo verifica `backend/test/infra/identityTrigger.test.ts`. Lo verifica `backend/test/infra/roleRevalidation.test.ts` y, con IAM activo, `backend/test/floci/roleRevalidation.test.ts`.
 
 ## Reglas verificadas por prueba
 

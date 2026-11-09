@@ -28,8 +28,8 @@ withAuth<TResource>(
 6. Ejecutar `handlerFn`.
 7. Auditar mediante `recordAuditEvent` según esta regla:
    - **Denegaciones** de cualquier acción protegida: siempre.
-   - **Éxitos**: solo en acciones que cambian estado (`CreateProject`, `PublishProject`, `CreateDonation`, `SimulateDonation`).
-   - **Acciones públicas** (`ListProjects`, `ViewProject`, `ViewProjectStats`) y éxitos de lectura (`ViewMyDonations`, `ViewAudit`): nunca. Así las funciones públicas no necesitan acceso a la tabla de auditoría.
+   - **Éxitos**: solo en acciones que cambian estado (`CreateProject`, `PublishProject`, `CreateDonation`, `SimulateDonation`). `ReviewDonation` también cambia estado, pero su éxito (`REVIEW_DECISION`, con la decisión) lo escribe el handler, igual que los eventos de velocidad de `CreateDonation`.
+   - **Acciones públicas** (`ListProjects`, `ViewProject`, `ViewProjectStats`) y éxitos de lectura (`ViewMyDonations`, `ViewAudit`, `ListReviews`): nunca. Así las funciones públicas no necesitan acceso a la tabla de auditoría.
 8. Mapear errores tipados a HTTP; nunca devolver el stack.
 
 ## Resultados
@@ -47,4 +47,8 @@ withAuth<TResource>(
 
 ## Prueba de cobertura (obligatoria en CI)
 
-Para cada línea `Handler:` de `infra/template.yaml`, importar el módulo y comprobar que `handler[WITH_AUTH] === true`. Añadir una función al template sin `withAuth` debe romper la prueba.
+Para cada línea `Handler:` de `infra/template.yaml`, importar el módulo y comprobar que `handler[WITH_AUTH] === true`. Añadir una función al template sin `withAuth` debe romper la prueba. Solo quedan exentos el disparador de Cognito (`AddDonorToGroup`) y el job programado `ExpireReviews`, cuyo único evento debe ser `Schedule` (nunca una ruta HTTP).
+
+## Acciones sensibles y separación de funciones
+
+Revalidan sesión (`userInfo`) y grupos (`AdminListGroupsForUser`) y fallan cerrado: `PublishProject`, `ViewAudit`, `ReviewDonation` y la confirmación de `SimulateDonation`. AUDITOR no se combina con ningún otro rol (`SEPARATION_OF_DUTIES`). En `ReviewDonation` el handler deniega con `CONFLICT_OF_INTEREST` (403, auditado) si el revisor es el donante o el creador del proyecto (`createdBy`); REVISOR sí puede ser GESTOR o DONANTE.

@@ -19,7 +19,7 @@ export const userManager = new UserManager({
   post_logout_redirect_uri: postLogoutRedirectUri,
   response_type: "code",
   scope:
-    "openid profile email api/projects.write api/donations.write api/donations.read api/audit.read",
+    "openid profile email api/projects.write api/donations.write api/donations.read api/audit.read api/donations.review",
   userStore: new WebStorageStateStore({ store: new InMemoryWebStorage() }),
   loadUserInfo: false,
 });

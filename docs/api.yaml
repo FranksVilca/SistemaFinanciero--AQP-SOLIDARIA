@@ -138,7 +138,9 @@ paths:
   /donations:
     post:
       summary: Registrar intención de donación simulada (solo DONANTE)
-      description: Registra una intención de donación en estado PENDIENTE_SIMULACION. Requiere cabecera Idempotency-Key.
+      description: >-
+        Registra una intención de donación en estado PENDIENTE_SIMULACION, o EN_REVISION si supera los controles de
+        velocidad del donante en la hora. Requiere cabecera Idempotency-Key.
       operationId: createDonation
       security:
         - CognitoJWT:
@@ -175,6 +177,31 @@ paths:
           $ref: '#/components/responses/404NotFound'
         '409':
           description: Conflicto de idempotencia (clave reutilizada con payload distinto) o proyecto no PUBLICADO
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Límite de donaciones nuevas por donante y minuto alcanzado (TOO_MANY_REQUESTS)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno, por ejemplo una transacción cancelada por un motivo inesperado (no se registra nada)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: >-
+            Otras donaciones del mismo donante se procesan a la vez y se agotaron los reintentos (SERVICE_UNAVAILABLE).
+            No se registró nada; puede repetirse con la misma Idempotency-Key tras el tiempo de Retry-After.
+          headers:
+            Retry-After:
+              description: Segundos sugeridos antes de reintentar
+              schema:
+                type: integer
           content:
             application/json:
               schema:
@@ -218,7 +245,7 @@ paths:
         '404':
           $ref: '#/components/responses/404NotFound'
         '409':
-          description: Transición inválida o donación ya confirmada/rechazada
+          description: Transición inválida, donación ya confirmada/rechazada o donación EN_REVISION
           content:
             application/json:
               schema:
@@ -245,6 +272,94 @@ paths:
           $ref: '#/components/responses/401Unauthorized'
         '403':
           $ref: '#/components/responses/403Forbidden'
+
+  /reviews:
+    get:
+      summary: Cola de donaciones EN_REVISION (solo REVISOR)
+      description: >
+        Donaciones retenidas por los controles de velocidad, de la más antigua a la más reciente. Nunca incluye el
+        `donorSub`: solo un seudónimo estable (`donorRef`). Nunca muestra al revisor sus propias donaciones, así que una
+        página puede traer menos ítems que `limit` aunque haya `nextToken`. `nextToken` es opaco: se devuelve tal cual para pedir la
+        página siguiente.
+      operationId: listReviews
+      security:
+        - CognitoJWT:
+            - api/donations.review
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: nextToken
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Una página de la cola de revisión
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewQueuePage'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+
+  /donations/{donationId}/review:
+    post:
+      summary: Aprobar o rechazar una donación EN_REVISION (solo REVISOR)
+      description: >
+        `APROBAR` la deja en `PENDIENTE_SIMULACION` (el donante puede confirmarla); `RECHAZAR` la deja en
+        `RECHAZADA_REVISION`, estado terminal que nunca suma al proyecto. Es una acción sensible: se revalidan la sesión
+        y los grupos contra Cognito. La escritura solo se aplica si la donación sigue `EN_REVISION`.
+      operationId: reviewDonation
+      security:
+        - CognitoJWT:
+            - api/donations.review
+      parameters:
+        - name: donationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewDonationRequest'
+      responses:
+        '200':
+          description: Decisión registrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewDecisionResult'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          description: Sin token válido o sesión revocada
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          description: Rol insuficiente, rol revocado, AUDITOR combinado o conflicto de interés (donación propia o de un proyecto que creó)
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '409':
+          description: La donación ya no está EN_REVISION (otro revisor la resolvió o venció)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /audit:
     get:
@@ -307,6 +422,7 @@ components:
             api/donations.write: Permiso para registrar y simular donaciones
             api/donations.read: Permiso para consultar historial de donaciones propias
             api/audit.read: Permiso para consultar logs de auditoría
+            api/donations.review: Permiso para revisar donaciones retenidas EN_REVISION
 
   responses:
     400BadRequest:
@@ -448,7 +564,7 @@ components:
           enum: [PEN]
         status:
           type: string
-          enum: [PENDIENTE_SIMULACION, CONFIRMADA_SIMULADA, RECHAZADA_SIMULADA]
+          enum: [PENDIENTE_SIMULACION, CONFIRMADA_SIMULADA, RECHAZADA_SIMULADA, EN_REVISION, RECHAZADA_REVISION]
         createdAt:
           type: string
           format: date-time
@@ -478,6 +594,75 @@ components:
         action:
           type: string
           enum: [CONFIRMAR, RECHAZAR]
+
+    ReviewQueueItem:
+      type: object
+      required: [donationId, projectId, amountCents, createdAt, donorRef]
+      properties:
+        donationId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        amountCents:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        reviewReasons:
+          type: array
+          items:
+            type: string
+            enum: [HOURLY_AMOUNT, STRUCTURING]
+        donorRef:
+          type: string
+          description: Seudónimo estable del donante, propio de la cola (`don_…`, distinto del `actorRef` de la auditoría); nunca el `sub`.
+
+    ReviewQueuePage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewQueueItem'
+        nextToken:
+          type: string
+          description: Opaco; ausente en la última página.
+
+    ReviewDonationRequest:
+      type: object
+      required: [decision, motivo]
+      properties:
+        decision:
+          type: string
+          enum: [APROBAR, RECHAZAR]
+        motivo:
+          type: string
+          minLength: 10
+          maxLength: 500
+          description: Obligatorio; se recortan los espacios antes de validar la longitud.
+
+    ReviewDecisionResult:
+      type: object
+      required: [donationId, projectId, status, reviewDecision, reviewedAt]
+      properties:
+        donationId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PENDIENTE_SIMULACION, RECHAZADA_REVISION]
+        reviewDecision:
+          type: string
+          enum: [APROBAR, RECHAZAR]
+        reviewedAt:
+          type: string
+          format: date-time
 
     AuditEvent:
       type: object
@@ -509,11 +694,27 @@ components:
           enum: [SUCCESS, DENIED, FAILED]
         eventType:
           type: string
-          enum: [AUTHZ_DECISION, PROJECT_CREATED, PROJECT_PUBLISHED, DONATION_CREATED, DONATION_TRANSITIONED]
+          enum:
+            - AUTHZ_DECISION
+            - PROJECT_CREATED
+            - PROJECT_PUBLISHED
+            - DONATION_CREATED
+            - DONATION_TRANSITIONED
+            - ROLE_ASSIGNED
+            - DONATION_RATE_LIMITED
+            - SUSPICIOUS_VELOCITY
+            - REVIEW_DECISION
+            - REVIEW_EXPIRED
         reason:
           type: string
-          description: Motivo de una denegación.
-          enum: [UNAUTHENTICATED, ROLE, OWNER, ENGINE_ERROR, SESSION_REVOKED]
+          description: >
+            Motivo de una denegación o, en `REVIEW_DECISION`, la decisión (`APROBAR` o `RECHAZAR`); en
+            `SUSPICIOUS_VELOCITY`, las reglas que la retuvieron.
+        details:
+          type: object
+          description: Contexto numérico, sin datos personales (por ejemplo `expiryDays` en `REVIEW_EXPIRED`).
+          additionalProperties:
+            type: number
 
     ErrorResponse:
       type: object

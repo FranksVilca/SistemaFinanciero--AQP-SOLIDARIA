@@ -2,9 +2,28 @@ import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { donationsApi } from "../services/apiClient.js";
 import { useAuth } from "../auth/AuthContext.js";
-import { formatPEN } from "../types/index.js";
+import { formatPEN, type Donation } from "../types/index.js";
 import { SimulationControls } from "../components/SimulationControls.js";
 import { History, Loader2, AlertCircle, HeartHandshake } from "lucide-react";
+
+const BADGE_STYLES: Record<Donation["status"], string> = {
+  CONFIRMADA_SIMULADA: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  PENDIENTE_SIMULACION: "bg-amber-50 text-amber-700 border-amber-200",
+  EN_REVISION: "bg-orange-50 text-orange-700 border-orange-200",
+  RECHAZADA_SIMULADA: "bg-red-50 text-red-700 border-red-200",
+  RECHAZADA_REVISION: "bg-rose-50 text-rose-800 border-rose-300",
+};
+
+const BADGE_LABELS: Partial<Record<Donation["status"], string>> = {
+  EN_REVISION: "En revisión",
+  RECHAZADA_REVISION: "Rechazada en revisión",
+};
+
+const DonationStatusBadge: React.FC<{ status: Donation["status"] }> = ({ status }) => (
+  <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${BADGE_STYLES[status]}`}>
+    {BADGE_LABELS[status] ?? status}
+  </span>
+);
 
 export const DonorHistoryPage: React.FC = () => {
   const { user, login } = useAuth();
@@ -79,8 +98,8 @@ export const DonorHistoryPage: React.FC = () => {
       {!isLoading && !error && donations && donations.length > 0 && (
         <div className="space-y-4">
           {donations.map((d) => {
-            const isPending = d.status === "PENDIENTE_SIMULACION";
-            const isConfirmed = d.status === "CONFIRMADA_SIMULADA";
+            const isUnderReview = d.status === "EN_REVISION";
+            const isRejectedByReview = d.status === "RECHAZADA_REVISION";
 
             return (
               <div
@@ -97,18 +116,20 @@ export const DonorHistoryPage: React.FC = () => {
                     </span>
                   </div>
 
-                  <span
-                    className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
-                      isConfirmed
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        : isPending
-                        ? "bg-amber-50 text-amber-700 border-amber-200"
-                        : "bg-red-50 text-red-700 border-red-200"
-                    }`}
-                  >
-                    {d.status}
-                  </span>
+                  <DonationStatusBadge status={d.status} />
                 </div>
+
+                {isUnderReview && (
+                  <p className="text-xs text-orange-700 mb-1">
+                    Retenida por los controles antifraude: un revisor debe aprobarla antes de que pueda simularse.
+                  </p>
+                )}
+
+                {isRejectedByReview && (
+                  <p className="text-xs text-rose-800 mb-1">
+                    Rechazada tras la revisión antifraude: no se sumará al proyecto.
+                  </p>
+                )}
 
                 <div className="text-xs text-slate-500">
                   Fecha de registro: {new Date(d.createdAt).toLocaleString("es-PE")}

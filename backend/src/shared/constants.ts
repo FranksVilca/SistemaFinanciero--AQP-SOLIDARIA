@@ -2,6 +2,8 @@ export const ROLES = {
   donor: "DONANTE",
   manager: "GESTOR",
   auditor: "AUDITOR",
+  /** Decides on the donations held by the velocity controls (four eyes: never on their own or their project's). */
+  reviewer: "REVISOR",
 } as const;
 
 export type UserRole = (typeof ROLES)[keyof typeof ROLES];
@@ -10,6 +12,10 @@ export const DONATION_STATUS = {
   pending: "PENDIENTE_SIMULACION",
   confirmed: "CONFIRMADA_SIMULADA",
   rejected: "RECHAZADA_SIMULADA",
+  /** Recorded but held by the velocity controls: it can be neither confirmed nor rejected by the donor. */
+  underReview: "EN_REVISION",
+  /** Terminal: a reviewer rejected it, or nobody reviewed it in time. It never counts toward the project total. */
+  rejectedByReview: "RECHAZADA_REVISION",
 } as const;
 
 export const PROJECT_STATUS = {
@@ -18,6 +24,9 @@ export const PROJECT_STATUS = {
 } as const;
 
 export const CURRENCY = "PEN";
+
+/** Largest single donation the API accepts (S/ 1,000.00). */
+export const DONATION_MAX_CENTS = 100_000;
 
 export const IDEMPOTENCY_TTL_SECONDS = 86_400;
 
@@ -36,6 +45,8 @@ export const AUTHZ_ACTIONS = {
   simulateDonation: "SimulateDonation",
   viewMyDonations: "ViewMyDonations",
   viewAudit: "ViewAudit",
+  listReviews: "ListReviews",
+  reviewDonation: "ReviewDonation",
 } as const;
 
 export type AuthzAction = (typeof AUTHZ_ACTIONS)[keyof typeof AUTHZ_ACTIONS];
@@ -43,6 +54,7 @@ export type AuthzAction = (typeof AUTHZ_ACTIONS)[keyof typeof AUTHZ_ACTIONS];
 /** Actions the system performs by itself (not requests of a person): they are audited but never authorized. */
 export const SYSTEM_ACTIONS = {
   assignInitialRole: "AssignInitialRole",
+  expireReview: "ExpireReview",
 } as const;
 
 export type AuditAction = AuthzAction | (typeof SYSTEM_ACTIONS)[keyof typeof SYSTEM_ACTIONS];
@@ -60,10 +72,15 @@ export const STATE_CHANGING_ACTIONS: readonly AuthzAction[] = [
   AUTHZ_ACTIONS.publishProject,
   AUTHZ_ACTIONS.createDonation,
   AUTHZ_ACTIONS.simulateDonation,
+  AUTHZ_ACTIONS.reviewDonation,
 ];
 
 /** Actions whose session must be revalidated against the identity provider. */
-export const SENSITIVE_ACTIONS: readonly AuthzAction[] = [AUTHZ_ACTIONS.publishProject, AUTHZ_ACTIONS.viewAudit];
+export const SENSITIVE_ACTIONS: readonly AuthzAction[] = [
+  AUTHZ_ACTIONS.publishProject,
+  AUTHZ_ACTIONS.viewAudit,
+  AUTHZ_ACTIONS.reviewDonation,
+];
 
 export const AUDIT_EVENT_TYPES = {
   authorizationDecision: "AUTHZ_DECISION",
@@ -72,6 +89,10 @@ export const AUDIT_EVENT_TYPES = {
   donationCreated: "DONATION_CREATED",
   donationTransitioned: "DONATION_TRANSITIONED",
   roleAssigned: "ROLE_ASSIGNED",
+  donationRateLimited: "DONATION_RATE_LIMITED",
+  suspiciousVelocity: "SUSPICIOUS_VELOCITY",
+  reviewDecision: "REVIEW_DECISION",
+  reviewExpired: "REVIEW_EXPIRED",
 } as const;
 
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[keyof typeof AUDIT_EVENT_TYPES];
@@ -93,4 +114,18 @@ export const AUDIT_OUTCOME = {
 export type AuditOutcome = (typeof AUDIT_OUTCOME)[keyof typeof AUDIT_OUTCOME];
 
 export const ANONYMOUS_ACTOR = "anonymous";
+/** Actor of what the system does on its own schedule (for example expiring a review). */
+export const SYSTEM_ACTOR = "system";
 export const NO_RESOURCE_REF = "-";
+
+/** Index of the donations by status, oldest first: the review queue and the expiry job read it. */
+export const DONATIONS_STATUS_INDEX = "status-createdAt-index";
+export const REVIEW_QUEUE_DEFAULT_LIMIT = 20;
+export const REVIEW_QUEUE_MAX_LIMIT = 50;
+export const REVIEW_MOTIVO_MIN_LENGTH = 10;
+export const REVIEW_MOTIVO_MAX_LENGTH = 500;
+export const REVIEW_EXPIRY_DEFAULT_DAYS = 7;
+/** Most donations one run of the expiry job resolves; the rest wait for the next run. */
+export const REVIEW_EXPIRY_MAX_PER_RUN = 100;
+export const REVIEW_EXPIRY_PAGE_SIZE = 25;
+export const REVIEW_EXPIRED_MOTIVO = "Vencida sin revisión";

@@ -26,17 +26,24 @@ const MATRIX: Record<string, Partial<Record<Table, string[]>>> = {
   "donations/createDonation.handler": {
     ProjectsTable: READ,
     DonationsTable: [...PUT, ...READ],
-    IdempotencyTable: [...PUT, ...READ],
+    // UpdateItem only for the velocity counters, which live in the idempotency table.
+    IdempotencyTable: [...PUT, ...READ, ...UPDATE],
     AuditTable: PUT,
   },
   "donations/simulateDonation.handler": { ProjectsTable: UPDATE, DonationsTable: [...READ, ...UPDATE], AuditTable: PUT },
   "donations/getMyDonations.handler": { DonationsTable: READ, AuditTable: PUT },
   "audit/getAuditEvents.handler": { AuditTable: [...READ, ...PUT] },
+  // Review of the donations held by the velocity controls.
+  "reviews/listReviews.handler": { DonationsTable: READ, AuditTable: PUT },
+  "reviews/reviewDonation.handler": { ProjectsTable: READ, DonationsTable: [...READ, ...UPDATE], AuditTable: PUT },
+  // Scheduled job: no route.
+  "reviews/expireReviews.handler": { DonationsTable: [...READ, ...UPDATE], AuditTable: PUT },
   // Cognito trigger: records that it gave the donor role.
   "identity/addDonorToGroup.handler": { AuditTable: PUT },
 };
 
 const COGNITO_TRIGGERS = ["identity/addDonorToGroup.handler"];
+const SCHEDULED_JOBS = ["reviews/expireReviews.handler"];
 
 const PUBLIC_HANDLERS = ["projects/listProjects.handler", "projects/getProject.handler", "projects/getProjectStats.handler"];
 const FORBIDDEN_ACTION = /Delete|BatchWrite|Scan|^dynamodb:\*$|^\*$/;
@@ -122,8 +129,12 @@ describe.each(STAGES)("least-privilege IAM in stage %s", (stage) => {
 
   it("declares one route per function and no shared policy resources", () => {
     for (const [, definition] of functions) {
-      // An API function has one route; a Cognito trigger is called by Cognito and has none.
-      expect(eventsOf(definition).length).toBe(COGNITO_TRIGGERS.includes(handlerOf(definition)) ? 0 : 1);
+      // An API function has one route; a Cognito trigger is called by Cognito and has none; a scheduled job has its
+      // schedule and no route.
+      const handler = handlerOf(definition);
+      const events = eventsOf(definition);
+      expect(events.length).toBe(COGNITO_TRIGGERS.includes(handler) ? 0 : 1);
+      for (const [, event] of events) expect(event.Type).toBe(SCHEDULED_JOBS.includes(handler) ? "Schedule" : "HttpApi");
     }
     expect(Object.values(template.resources).filter((resource) => resource.Type === "AWS::IAM::ManagedPolicy")).toHaveLength(0);
   });

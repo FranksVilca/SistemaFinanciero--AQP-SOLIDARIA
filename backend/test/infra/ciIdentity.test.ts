@@ -183,9 +183,10 @@ describe("the role that creates the resources, usable only by CloudFormation", (
     expect(allActions.filter((action) => action.includes("*"))).toEqual([]);
   });
 
+  // events: the EventBridge rule of the daily review expiry (ExpireReviewsFunction).
   it("uses no service that the application does not need", () => {
     expect(new Set(allActions.map((action) => action.split(":")[0]))).toEqual(
-      new Set(["cloudformation", "dynamodb", "lambda", "iam", "apigateway", "logs", "cognito-idp", "cloudfront", "s3", "cloudtrail"])
+      new Set(["cloudformation", "dynamodb", "lambda", "iam", "apigateway", "logs", "cognito-idp", "cloudfront", "s3", "cloudtrail", "events"])
     );
   });
 
@@ -266,6 +267,7 @@ describe("what the application template needs is covered", () => {
     "AWS::Cognito::UserPoolResourceServer": ["cognito-idp:CreateResourceServer"],
     "AWS::Cognito::UserPoolUICustomizationAttachment": ["cognito-idp:SetUICustomization"],
     "AWS::DynamoDB::Table": ["dynamodb:CreateTable", "dynamodb:PutResourcePolicy"],
+    "AWS::Events::Rule": ["events:PutRule", "events:PutTargets"],
     "AWS::IAM::Policy": ["iam:PutRolePolicy"],
     "AWS::IAM::Role": ["iam:CreateRole", "iam:PassRole"],
     "AWS::Lambda::Function": ["lambda:CreateFunction"],
@@ -277,7 +279,20 @@ describe("what the application template needs is covered", () => {
   // Off by default in the free plan: turning them on fails the deployment until their permissions are added on purpose.
   const NOT_COVERED = ["AWS::GuardDuty::Detector", "AWS::SecurityHub::Hub"];
 
-  const needed = [...new Set(Object.values(raw).flatMap((resource) => EXPANDS_TO[String(resource.Type)] ?? [String(resource.Type)]))];
+  // A function's events are resources too: a Schedule event becomes an EventBridge rule plus its invoke permission.
+  const EVENT_EXPANDS_TO: Record<string, string[]> = { Schedule: ["AWS::Events::Rule", "AWS::Lambda::Permission"] };
+  const eventTypesOf = (resource: JsonObject): string[] =>
+    Object.values(((resource.Properties as JsonObject | undefined)?.Events ?? {}) as Record<string, JsonObject>).flatMap(
+      (event) => EVENT_EXPANDS_TO[String(event.Type)] ?? []
+    );
+  const needed = [
+    ...new Set(
+      Object.values(raw).flatMap((resource) => [
+        ...(EXPANDS_TO[String(resource.Type)] ?? [String(resource.Type)]),
+        ...eventTypesOf(resource),
+      ])
+    ),
+  ];
 
   it("lets the role create every type of resource of the template, except the options that are off by default", () => {
     for (const type of needed.filter((candidate) => !NOT_COVERED.includes(candidate))) {
