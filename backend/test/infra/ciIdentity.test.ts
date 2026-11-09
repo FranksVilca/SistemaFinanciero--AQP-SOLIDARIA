@@ -69,18 +69,28 @@ describe("who can assume the role that GitHub uses", () => {
       "token.actions.githubusercontent.com:sub",
     ]);
     expect(condition.StringEquals["token.actions.githubusercontent.com:aud"]).toBe("sts.amazonaws.com");
+    // The identity that GitHub presents names the owner and the repository with their numbers, which never change.
     expect(condition.StringEquals["token.actions.githubusercontent.com:sub"]).toEqual({
-      "Fn::Sub": "repo:${GitHubRepository}:ref:refs/heads/${GitHubBranch}",
+      "Fn::Sub":
+        "repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepositoryName}@${GitHubRepositoryId}:ref:refs/heads/${GitHubBranch}",
     });
   });
 
-  it("defaults to this repository and to main, and the parameters cannot hold a wildcard", () => {
-    expect(parameters.GitHubRepository.Default).toBe("FranksVilca/SistemaFinanciero--AQP-SOLIDARIA");
+  it("defaults to this repository (name and numbers) and to main, and the parameters cannot hold a wildcard", () => {
+    expect(parameters.GitHubOwner.Default).toBe("FranksVilca");
+    expect(parameters.GitHubOwnerId.Default).toBe("160974877");
+    expect(parameters.GitHubRepositoryName.Default).toBe("SistemaFinanciero--AQP-SOLIDARIA");
+    expect(parameters.GitHubRepositoryId.Default).toBe("1448672488");
     expect(parameters.GitHubBranch.Default).toBe("main");
     for (const [name, attempt] of [
-      ["GitHubRepository", "*/x"],
-      ["GitHubRepository", "owner/*"],
-      ["GitHubRepository", "owner/repo*"],
+      ["GitHubOwner", "*"],
+      ["GitHubOwner", "owner/*"],
+      ["GitHubOwnerId", "*"],
+      ["GitHubOwnerId", "1*"],
+      ["GitHubRepositoryName", "*"],
+      ["GitHubRepositoryName", "repo*"],
+      ["GitHubRepositoryId", "*"],
+      ["GitHubRepositoryId", "12*"],
       ["GitHubBranch", "*"],
       ["GitHubBranch", "release/*"],
     ] as const) {

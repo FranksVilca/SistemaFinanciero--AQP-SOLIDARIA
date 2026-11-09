@@ -138,13 +138,18 @@ pasan y la cuenta de AWS tiene la identidad del CI. Esa identidad no usa claves 
 
 ```bash
 aws cloudformation deploy --template-file infra/bootstrap/github-oidc.yaml \
-  --stack-name aqp-solidaria-github-oidc --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides GitHubRepository=<propietario>/<repositorio>
+  --stack-name aqp-solidaria-github-oidc --capabilities CAPABILITY_NAMED_IAM
 aws cloudformation describe-stacks --stack-name aqp-solidaria-github-oidc --query "Stacks[0].Outputs" --output table
 ```
 
-Si la cuenta ya tiene el proveedor `token.actions.githubusercontent.com`, agregue `CreateOidcProvider=false`. Escriba el
-repositorio con las mismas mayúsculas que en GitHub: la comparación distingue mayúsculas.
+Si la cuenta ya tiene el proveedor `token.actions.githubusercontent.com`, agregue `--parameter-overrides CreateOidcProvider=false`.
+
+Los valores por defecto son los de este repositorio. GitHub identifica cada ejecución con el nombre **y el número** del
+propietario y del repositorio (`repo:<propietario>@<id>/<repositorio>@<id>:ref:refs/heads/main`); los números no cambian
+aunque se renombre o transfiera el repositorio. Para otro repositorio, cambie `GitHubOwner`, `GitHubOwnerId`,
+`GitHubRepositoryName` y `GitHubRepositoryId` (los números salen de `https://api.github.com/repos/<propietario>/<repositorio>`,
+campos `owner.id` e `id`). Si el despliegue del CI falla con `Not authorized to perform sts:AssumeRoleWithWebIdentity`, el
+paso "Show the identity that GitHub presented" del trabajo muestra qué identidad presentó GitHub.
 
 **2. Tres variables del repositorio** (Settings, Secrets and variables, Actions, pestaña Variables; no son secretos):
 

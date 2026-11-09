@@ -192,9 +192,17 @@ jobs:
       - run: npm run build --workspace=backend
       - uses: aws-actions/setup-sam@v2
       - uses: aws-actions/configure-aws-credentials@v4
+        id: aws
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-1
+      # GitHub names the run with identifiers that the trust policy of the role has to match exactly. When AWS refuses
+      # the role, this shows what GitHub presented (only metadata of the run, never the token).
+      - name: Show the identity that GitHub presented (only when the role could not be assumed)
+        if: failure() && steps.aws.outcome == 'failure'
+        run: |
+          token="$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)"
+          node -e 'const c=JSON.parse(Buffer.from(process.argv[1].split(".")[1],"base64url"));const {sub,aud,repository,repository_id,repository_owner_id,ref}=c;console.log(JSON.stringify({sub,aud,repository,repository_id,repository_owner_id,ref},null,2))' "$token"
       - run: sam build --template-file infra/template.yaml
       - run: >
           sam deploy

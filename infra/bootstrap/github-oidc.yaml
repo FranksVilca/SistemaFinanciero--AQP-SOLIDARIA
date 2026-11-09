@@ -22,11 +22,32 @@ Description: >-
 #   rama y se recomienda proteger `main` con revision obligatoria.
 
 Parameters:
-  GitHubRepository:
+  # GitHub identifica la ejecucion con el nombre Y el numero de propietario y de repositorio
+  # (repo:<propietario>@<id>/<repositorio>@<id>:ref:refs/heads/<rama>). Los numeros no cambian aunque se renombre o se
+  # transfiera el repositorio, y un repositorio nuevo con el mismo nombre tendria otros: asi nadie hereda el acceso.
+  # Se obtienen de https://api.github.com/repos/<propietario>/<repositorio> (campos `id` y `owner.id`). Si el
+  # despliegue del CI falla con "Not authorized to perform sts:AssumeRoleWithWebIdentity", el evento
+  # AssumeRoleWithWebIdentity del historial de CloudTrail muestra la identidad exacta que se presento.
+  GitHubOwner:
     Type: String
-    Default: FranksVilca/SistemaFinanciero--AQP-SOLIDARIA
-    AllowedPattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
-    Description: Repositorio (propietario/nombre, con las mismas mayusculas que en GitHub) que puede asumir el rol.
+    Default: FranksVilca
+    AllowedPattern: '^[A-Za-z0-9_.-]+$'
+    Description: Propietario del repositorio, con las mismas mayusculas que en GitHub.
+  GitHubOwnerId:
+    Type: String
+    Default: "160974877"
+    AllowedPattern: '^[0-9]+$'
+    Description: Numero de la cuenta propietaria (owner.id de la API de GitHub).
+  GitHubRepositoryName:
+    Type: String
+    Default: SistemaFinanciero--AQP-SOLIDARIA
+    AllowedPattern: '^[A-Za-z0-9_.-]+$'
+    Description: Nombre del repositorio, con las mismas mayusculas que en GitHub.
+  GitHubRepositoryId:
+    Type: String
+    Default: "1448672488"
+    AllowedPattern: '^[0-9]+$'
+    Description: Numero del repositorio (id de la API de GitHub).
   GitHubBranch:
     Type: String
     Default: main
@@ -76,7 +97,7 @@ Resources:
             Condition:
               StringEquals:
                 "token.actions.githubusercontent.com:aud": sts.amazonaws.com
-                "token.actions.githubusercontent.com:sub": !Sub "repo:${GitHubRepository}:ref:refs/heads/${GitHubBranch}"
+                "token.actions.githubusercontent.com:sub": !Sub "repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepositoryName}@${GitHubRepositoryId}:ref:refs/heads/${GitHubBranch}"
       Policies:
         - PolicyName: deploy-and-publish
           PolicyDocument:
