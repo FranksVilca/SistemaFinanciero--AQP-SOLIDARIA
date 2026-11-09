@@ -57,7 +57,7 @@ async function newPage(trustCertificate = true): Promise<{ context: BrowserConte
 /** Clicks the control that starts the sign-in and returns the window the identity provider opens. */
 async function openSignInWindow(page: Page, startSignIn: () => Promise<void>): Promise<Page> {
   const [popup] = await Promise.all([page.waitForEvent("popup"), startSignIn()]);
-  await popup.waitForURL(/cognito-idp\/login/);
+  await popup.locator("#username").waitFor();
   return popup;
 }
 
