@@ -34,6 +34,8 @@ async function prepareDataset(baseUrl: string, token: string): Promise<void> {
 }
 
 function runK6(baseUrl: string, script: string): void {
+  // On Linux, k6's image user cannot write the runner-owned bind mount. Use the host user's UID/GID, not root.
+  const owner = process.getuid && process.getgid ? ["--user", `${process.getuid()}:${process.getgid()}`] : [];
   const containerUrl = new URL(baseUrl);
   if (["localhost", "127.0.0.1"].includes(containerUrl.hostname)) {
     containerUrl.hostname = "host.docker.internal";
@@ -43,6 +45,7 @@ function runK6(baseUrl: string, script: string): void {
     [
       "run",
       "--rm",
+      ...owner,
       "--add-host",
       "host.docker.internal:host-gateway",
       "-v",
