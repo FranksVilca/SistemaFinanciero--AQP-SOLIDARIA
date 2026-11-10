@@ -1,5 +1,9 @@
 # Reporte de Evidencia de Ejecución de Pruebas (T01 - T14)
 
+Ejecución adicional del 2026-11-09, posterior al PR #3: [pruebas adversas de donaciones](adversarial-donations.md).
+Incluye siete casos nuevos contra DynamoDB Local; la suite completa de integración pasa 79/79 y la unitaria 152/152.
+Las cifras de las secciones originales describen la ejecución anterior y se conservan como historial.
+
 **Curso:** Tópicos Avanzados en Ingeniería de Software — EPIS, UNSA  
 **Fecha:** 2026-11-09 (reemplaza el reporte del 2026-11-06, que se apoyaba en pruebas con DynamoDB simulado)  
 **Framework de pruebas:** Vitest 3.2.7 en Node.js v24  
