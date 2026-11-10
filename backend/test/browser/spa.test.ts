@@ -193,6 +193,16 @@ describe.each(SITES)("SPA served as: %s", (kind) => {
       await page.getByRole("button", { name: "Aceptar" }).focus();
       await page.keyboard.press("Enter");
       expect(await opener.evaluate((node) => node === document.activeElement)).toBe(true);
+      const historyLink = page.getByRole("link", { name: "Mis Donaciones" });
+      await historyLink.waitFor();
+      await historyLink.focus();
+      await page.keyboard.press("Enter");
+      const simulate = page.getByRole("button", { name: "Simular Aprobación" }).first();
+      await simulate.waitFor();
+      await simulate.focus();
+      await page.keyboard.press("Enter");
+      await page.getByText("CONFIRMADA_SIMULADA", { exact: true }).waitFor();
+      await capture("simulation-375");
       expect(watched.consoleErrors).toEqual([]);
     } finally {
       await context.close();
