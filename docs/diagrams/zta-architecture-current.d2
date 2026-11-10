@@ -38,8 +38,8 @@ front: "ENTREGA DEL FRONTEND (archivos estáticos)" {
 
 pa: "PA · identidad" {
   class: zone-blue
-  cognito: "Amazon Cognito (1 user pool)\nMFA TOTP obligatorio · PKCE\naccess 15 min · refresh 7 días\ngrupos: DONANTE GESTOR REVISOR AUDITOR ADMIN" { class: svc; shape: image; icon: ${icons}/Security%2C%20Identity%2C%20%26%20Compliance/Amazon-Cognito.svg }
-  trigger: "Trigger post-confirmación\nregistro → DONANTE" { class: code }
+  cognito: "Amazon Cognito (1 user pool · plan Essentials)\nMFA TOTP obligatorio · PKCE\naccess 15 min · refresh 7 días\ngrupos: DONANTE GESTOR REVISOR AUDITOR ADMIN" { class: svc; shape: image; icon: ${icons}/Security%2C%20Identity%2C%20%26%20Compliance/Amazon-Cognito.svg }
+  trigger: "Trigger post-confirmación\nregistro → DONANTE\n(audita ROLE_ASSIGNED)" { class: code }
   cognito -> trigger: "alta nueva" { class: soft }
 }
 
@@ -50,27 +50,33 @@ pep: "PEP · punto de aplicación" {
 
 back: "PDP · cómputo (Lambda Node.js 24, rol IAM mínimo por función)" {
   class: zone-green
-  lam: "AWS Lambda\n15 funciones · 1 rol IAM cada una" { class: svc; shape: image; icon: ${icons}/Compute/AWS-Lambda.svg }
+  lam: "AWS Lambda\n16 funciones · 1 rol IAM cada una" { class: svc; shape: image; icon: ${icons}/Compute/AWS-Lambda.svg }
   authz: "withAuth() en toda ruta\n1 rol → 2 dueño/recurso →\n3 sesión + grupos en acciones sensibles\n(reglas de roles: roleRules.ts)" { class: code }
-  projects: "projects\nlistar · detalle · stats (públicas)\ncrear · publicar (GESTOR)" { class: box }
+  projects: "projects\nlistar · detalle · stats (públicas)\ncrear · publicar · cerrar (GESTOR dueño)" { class: box }
   donations: "donations\ncrear (DONANTE) + controles de velocidad\nsimular (solo academic) · historial" { class: box }
   reviews: "reviews\ncola · decidir (REVISOR)\njob diario de vencimiento" { class: box }
   admin: "admin\nlistar usuarios · dar/quitar rol (ADMIN)" { class: box }
-  audit: "audit\nconsultar (AUDITOR)" { class: box }
+  audit: "audit\nconsultar (AUDITOR, lee por día)" { class: box }
 }
 
-data: "DATOS · DynamoDB on-demand" {
+data: "DATOS · DynamoDB on-demand · PITR en projects, donations y audit" {
   class: zone-purple
   projects: "projects\nPK projectId" { class: svc; shape: image; icon: ${icons}/Database/Amazon-DynamoDB.svg }
   donations: "donations\nPK donationId\nGSI donorSub-createdAt\nGSI status-createdAt" { class: svc; shape: image; icon: ${icons}/Database/Amazon-DynamoDB.svg }
-  idem: "idempotency\nPK pk · TTL expiresAt\nclaves + contadores velocity#" { class: svc; shape: image; icon: ${icons}/Database/Amazon-DynamoDB.svg }
-  auditdb: "audit (solo inserción)\nPK auditDay · SK timestamp#eventId\npolítica: funciones no editan ni borran" { class: svc; shape: image; icon: ${icons}/Database/Amazon-DynamoDB.svg }
+  idem: "idempotency\nPK pk · TTL\ncontadores velocity#" { class: svc; shape: image; icon: ${icons}/Database/Amazon-DynamoDB.svg }
+  auditdb: "audit (solo inserción)\nPK auditDay\nsin editar ni borrar" { class: svc; shape: image; icon: ${icons}/Database/Amazon-DynamoDB.svg }
 }
 
-tel: "TELEMETRÍA" {
+tel: "TELEMETRÍA Y ALERTAS" {
   class: zone-grey
   cw: "CloudWatch Logs\n(14 días)" { class: svc; shape: image; icon: ${icons}/Management%20%26%20Governance/Amazon-CloudWatch.svg }
   ct: "CloudTrail\n(opcional,\napagado)" { class: svc; shape: image; icon: ${icons}/Management%20%26%20Governance/AWS-CloudTrail.svg }
+  alarms: "CloudWatch Alarms (4)\nmiden API Gateway y Lambda:\n5xx · errores · throttles\njob diario sin correr" { class: svc; shape: image; icon: ${icons}/Management%20%26%20Governance/Amazon-CloudWatch.svg }
+  sns: "SNS · tópico de alarmas\nsuscripción por correo\n(hay que confirmarla)" { class: box }
+  budget: "AWS Budgets\nUSD 5 al mes · avisa al 80 %,\n100 % y 100 % previsto" { class: box }
+  mail: "Correo de alertas\n(variable ALERT_EMAIL)" { class: box }
+  alarms -> sns -> mail
+  budget -> mail
 }
 
 ci: "CI/CD · GitHub Actions" {
@@ -82,7 +88,7 @@ ci: "CI/CD · GitHub Actions" {
 
 op: "OPERADOR · terminal con credenciales AWS" {
   class: zone-red
-  script: "npm run role\nAUDITOR · ADMIN · primer admin\nmismas reglas · actor operator" { class: code }
+  script: "npm run role\nAUDITOR · ADMIN · primer admin\nmismas reglas · actor operator\n(audita ROLE_GRANTED / ROLE_REVOKED)" { class: code }
   boot: "stack bootstrap (github-oidc)\nlo aplica una persona, no el CI" { class: box }
 }
 
@@ -90,7 +96,6 @@ zona.users -> zona.spa
 zona.spa -> front.cf: "① carga la SPA" { class: flow }
 zona.spa -> pa.cognito: "② login (ventana emergente)" { class: flow; style.stroke: "#1F5FBF" }
 zona.spa -> pep.apigw: "③ Bearer access token" { class: flow; style.stroke: "#E67E22" }
-pa.cognito -> pep.apigw: "claves JWKS" { class: soft }
 pep.apigw -> back.lam: "④ solo con JWT y scope válidos" { class: flow; style.stroke: "#1E8449" }
 back.lam -> back.authz: "dentro de cada función" { class: soft }
 back.authz -> back.projects
@@ -105,12 +110,8 @@ back.donations -> data.idem
 back.donations -> data.projects: "confirmar suma al total"
 back.reviews -> data.donations: "escritura condicional\nstatus = EN_REVISION"
 back.admin -> pa.cognito: "AdminAdd/RemoveUserFromGroup" { class: flow; style.stroke: "#1F5FBF" }
-back.audit -> data.auditdb: "lee por día" { class: soft }
 back.authz -> data.auditdb: "⑥ evento (solo PutItem)" { class: flow; style.stroke: "#7D3C98" }
-pa.trigger -> data.auditdb: "ROLE_ASSIGNED" { class: soft }
 back -> tel.cw: "logs" { class: soft }
-pep.apigw -> tel.cw: "logs de acceso" { class: soft }
 ci.deploy -> back: "despliega la plantilla" { class: soft }
 op.script -> pa.cognito: "cambia grupos" { class: flow; style.stroke: "#C0392B" }
-op.script -> data.auditdb: "ROLE_GRANTED / ROLE_REVOKED" { class: soft }
 op.boot -> ci.deploy: "crea la identidad del CI" { class: soft }

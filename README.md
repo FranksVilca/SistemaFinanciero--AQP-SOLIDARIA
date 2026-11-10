@@ -15,6 +15,8 @@ Sistema cloud-native serverless de publicación de causas sociales y registro de
 - **Policy Administrator (PA)**: Amazon Cognito User Pool con Authorization Code Grant + PKCE, tokens de vida corta ($\le 15$ min) guardados en memoria y MFA TOTP obligatorio para todo el pool (Cognito no lo aplica por grupo, así que también los donantes enrolan un autenticador una vez). Las acciones sensibles (publicar, ver auditoría, confirmar una donación, decidir una revisión) revalidan la sesión contra Cognito.
 - **Control de abuso y revisión humana**: contadores atómicos por donante (máximo 5 donaciones nuevas por minuto y revisión por monto horario o fraccionamiento) y una cola donde un `REVISOR` aprueba o rechaza lo retenido, con cuatro ojos (ver [docs/arquitectura-actual.md](docs/arquitectura-actual.md)).
 - **Administración de roles**: rol `ADMIN` con pantalla propia y script `npm run role`; `AUDITOR` y `ADMIN` van solos y `GESTOR` no se combina con `REVISOR`.
+- **Ciclo de una campaña**: `BORRADOR` → `PUBLICADO` → `CERRADO`. Llegar a la meta no la cierra (se muestra el porcentaje real); la cierra a mano el gestor que la creó, y desde entonces no admite donaciones nuevas pero sigue visible con lo recaudado.
+- **Alertas**: presupuesto mensual de AWS Budgets y cuatro alarmas de CloudWatch con aviso por correo (SNS), activos al definir `ALERT_EMAIL`.
 - **Integridad e Idempotencia**: Amazon DynamoDB (On-Demand) con `TransactWriteItems` para reserva de clave de idempotencia (UUID) y control estricto de concurrencia (T08: 10 peticiones paralelas $\to$ 1 éxito, 9 conflictos).
 
 ---
@@ -106,6 +108,8 @@ El despliegue está configurado para la región `us-east-1` utilizando exclusiva
 
 ### Paso 1: Configurar AWS Budgets
 Antes del primer despliegue, active una alerta en AWS Budgets con límite de USD 1.00 para evitar consumos no planificados.
+Si despliega con `ALERT_EMAIL` (ver el despliegue automático, más abajo), la plantilla crea ya un presupuesto mensual de
+USD 5 con aviso por correo; este paso manual solo hace falta para cubrir el primer despliegue o si no usa esa variable.
 
 ### Paso 2: Construir y Desplegar Backend con SAM
 ```bash
