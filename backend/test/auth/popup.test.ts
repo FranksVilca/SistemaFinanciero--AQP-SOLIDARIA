@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPopupBlocked, isPopupClosedByPerson } from "../../../frontend/src/auth/popup.js";
+import { isPopupBlocked, isPopupClosedByPerson, isSignInWindow } from "../../../frontend/src/auth/popup.js";
 
 describe("sign-in window errors", () => {
   it("recognises a window that the browser blocked", () => {
@@ -21,5 +21,25 @@ describe("sign-in window errors", () => {
   ])("treats anything else as a real failure: %s", (error) => {
     expect(isPopupBlocked(error)).toBe(false);
     expect(isPopupClosedByPerson(error)).toBe(false);
+  });
+});
+
+describe("telling the sign-in window from the whole page", () => {
+  it("is the sign-in window when another window opened it", () => {
+    expect(isSignInWindow({ opener: {} })).toBe(true);
+  });
+
+  it.each([[{ opener: null }], [{}], [{ opener: undefined }]])(
+    "is the whole page when nothing opened it: %j",
+    (page) => {
+      expect(isSignInWindow(page)).toBe(false);
+    }
+  );
+
+  it("is not the sign-in window when the opener is the window itself", () => {
+    const page: { opener?: unknown } = {};
+    page.opener = page;
+
+    expect(isSignInWindow(page)).toBe(false);
   });
 });
