@@ -34,6 +34,14 @@ En cumplimiento de las directivas del curso y la sección §10 de [design.md](./
 - Limitaciones: los claims se construyen en los eventos de prueba y la suite sustituye Cognito userInfo y grupos;
   no se declara evidencia de JWT, IAM, MFA, cambios reales de IP ni ejecución en AWS.
 
+## QA de accesibilidad asistido con Codex — 2026-11-09
+
+- OpenAI Codex asistió en el diálogo de donación y la prueba de móvil y teclado en Playwright.
+- El caso de foco se vio fallar antes de modificar la interfaz. Los comandos y límites de evidencia constan en
+  `evidence/qa-accessibility.md`.
+- Participante responsable y revisión humana por otro integrante: pendientes de confirmación. No se declara
+  certificación WCAG completa.
+
 ## Declaración Ética y de Originalidad
 
 1. Ninguna credencial de producción, clave secreta de AWS ni dato personal real fue compartido o procesado por modelos de inteligencia artificial.
