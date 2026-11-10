@@ -51,11 +51,18 @@ const MAY_PUT: Record<string, TableKey[]> = {
   "donations/simulateDonation.handler": ["audit"],
   "donations/getMyDonations.handler": ["audit"],
   "audit/getAuditEvents.handler": ["audit"],
+  "reviews/listReviews.handler": ["audit"],
+  "reviews/reviewDonation.handler": ["audit"],
+  "reviews/expireReviews.handler": ["audit"],
+  "admin/listUsers.handler": ["audit"],
+  "admin/changeUserRole.handler": ["audit"],
 };
 const MAY_UPDATE: Record<string, TableKey[]> = {
   "projects/publishProject.handler": ["projects"],
   "donations/createDonation.handler": ["idempotency"],
   "donations/simulateDonation.handler": ["projects", "donations"],
+  "reviews/reviewDonation.handler": ["donations"],
+  "reviews/expireReviews.handler": ["donations"],
 };
 
 function clientAs(handlerRef: string): DynamoDBClient {

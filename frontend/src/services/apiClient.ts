@@ -1,4 +1,12 @@
-import { Project, Donation, ReviewDecision, ReviewQueuePage } from "../types/index.js";
+import {
+  AdminUsersPage,
+  AssignableRole,
+  Project,
+  Donation,
+  ReviewDecision,
+  ReviewQueuePage,
+  RoleChangeResult,
+} from "../types/index.js";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/v1";
 
@@ -94,6 +102,22 @@ export const reviewsApi = {
     apiFetch<{ donationId: string; status: Donation["status"] }>(`/donations/${donationId}/review`, {
       method: "POST",
       body: JSON.stringify({ decision, motivo }),
+      token,
+    }),
+};
+
+export const adminApi = {
+  list: (token: string, options: { email?: string; nextToken?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (options.email) query.set("email", options.email);
+    if (options.nextToken) query.set("nextToken", options.nextToken);
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
+    return apiFetch<AdminUsersPage>(`/admin/users${suffix}`, { token });
+  },
+  changeRole: (userId: string, action: "ADD" | "REMOVE", role: AssignableRole, token: string) =>
+    apiFetch<RoleChangeResult>(`/admin/users/${encodeURIComponent(userId)}/roles`, {
+      method: "POST",
+      body: JSON.stringify({ action, role }),
       token,
     }),
 };

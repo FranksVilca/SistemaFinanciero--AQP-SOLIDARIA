@@ -42,6 +42,33 @@ export interface ReviewQueuePage {
 
 export type ReviewDecision = "APROBAR" | "RECHAZAR";
 
+/** The roles an administrator gives and takes away in the application; AUDITOR and ADMIN go through the operator script. */
+export type AssignableRole = "DONANTE" | "GESTOR" | "REVISOR";
+
+/** A person of the pool as the administration screen shows them: what the rules still let the administrator do. */
+export interface AdminUser {
+  userId: string;
+  email?: string;
+  roles: string[];
+  isSelf: boolean;
+  /** Holds AUDITOR or ADMIN: only the operator script changes them. */
+  isProtected: boolean;
+  addable: AssignableRole[];
+  removable: AssignableRole[];
+}
+
+export interface AdminUsersPage {
+  items: AdminUser[];
+  nextToken?: string;
+}
+
+export interface RoleChangeResult {
+  userId: string;
+  roles: string[];
+  /** False when the person already was as asked: nothing was written. */
+  changed: boolean;
+}
+
 export interface ProjectStats {
   projectId: string;
   goalAmountCents: number;

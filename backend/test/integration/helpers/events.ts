@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-export type TestRole = "DONANTE" | "GESTOR" | "AUDITOR" | "REVISOR" | "GESTOR_FAKE";
+export type TestRole = "DONANTE" | "GESTOR" | "AUDITOR" | "REVISOR" | "ADMIN" | "GESTOR_FAKE";
 
 export interface TestIdentity {
   sub: string;

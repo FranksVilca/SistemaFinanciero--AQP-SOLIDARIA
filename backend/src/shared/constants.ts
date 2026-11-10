@@ -4,6 +4,8 @@ export const ROLES = {
   auditor: "AUDITOR",
   /** Decides on the donations held by the velocity controls (four eyes: never on their own or their project's). */
   reviewer: "REVISOR",
+  /** Manages who holds which role (see roleRules.ts); it operates nothing else and is never combined with another role. */
+  admin: "ADMIN",
 } as const;
 
 export type UserRole = (typeof ROLES)[keyof typeof ROLES];
@@ -47,6 +49,8 @@ export const AUTHZ_ACTIONS = {
   viewAudit: "ViewAudit",
   listReviews: "ListReviews",
   reviewDonation: "ReviewDonation",
+  listUsers: "ListUsers",
+  changeUserRole: "ChangeUserRole",
 } as const;
 
 export type AuthzAction = (typeof AUTHZ_ACTIONS)[keyof typeof AUTHZ_ACTIONS];
@@ -57,7 +61,15 @@ export const SYSTEM_ACTIONS = {
   expireReview: "ExpireReview",
 } as const;
 
-export type AuditAction = AuthzAction | (typeof SYSTEM_ACTIONS)[keyof typeof SYSTEM_ACTIONS];
+/** What an operator does from the command line (not through the API): audited like any change of access. */
+export const OPERATOR_ACTIONS = {
+  changeRole: "OperatorChangeRole",
+} as const;
+
+export type AuditAction =
+  | AuthzAction
+  | (typeof SYSTEM_ACTIONS)[keyof typeof SYSTEM_ACTIONS]
+  | (typeof OPERATOR_ACTIONS)[keyof typeof OPERATOR_ACTIONS];
 
 /** Actions that never require identity and are never audited. */
 export const PUBLIC_ACTIONS: readonly AuthzAction[] = [
@@ -73,6 +85,7 @@ export const STATE_CHANGING_ACTIONS: readonly AuthzAction[] = [
   AUTHZ_ACTIONS.createDonation,
   AUTHZ_ACTIONS.simulateDonation,
   AUTHZ_ACTIONS.reviewDonation,
+  AUTHZ_ACTIONS.changeUserRole,
 ];
 
 /** Actions whose session must be revalidated against the identity provider. */
@@ -80,6 +93,9 @@ export const SENSITIVE_ACTIONS: readonly AuthzAction[] = [
   AUTHZ_ACTIONS.publishProject,
   AUTHZ_ACTIONS.viewAudit,
   AUTHZ_ACTIONS.reviewDonation,
+  // Whoever manages roles sees the emails of the pool and changes who may do what: the role is read again every time.
+  AUTHZ_ACTIONS.listUsers,
+  AUTHZ_ACTIONS.changeUserRole,
 ];
 
 export const AUDIT_EVENT_TYPES = {
@@ -93,6 +109,8 @@ export const AUDIT_EVENT_TYPES = {
   suspiciousVelocity: "SUSPICIOUS_VELOCITY",
   reviewDecision: "REVIEW_DECISION",
   reviewExpired: "REVIEW_EXPIRED",
+  roleGranted: "ROLE_GRANTED",
+  roleRevoked: "ROLE_REVOKED",
 } as const;
 
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[keyof typeof AUDIT_EVENT_TYPES];
@@ -116,6 +134,8 @@ export type AuditOutcome = (typeof AUDIT_OUTCOME)[keyof typeof AUDIT_OUTCOME];
 export const ANONYMOUS_ACTOR = "anonymous";
 /** Actor of what the system does on its own schedule (for example expiring a review). */
 export const SYSTEM_ACTOR = "system";
+/** Actor of a change made by a person with AWS access from the command line, outside the application. */
+export const OPERATOR_ACTOR = "operator";
 export const NO_RESOURCE_REF = "-";
 
 /** Index of the donations by status, oldest first: the review queue and the expiry job read it. */

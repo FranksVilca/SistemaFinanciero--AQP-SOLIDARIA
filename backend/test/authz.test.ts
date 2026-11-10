@@ -192,8 +192,8 @@ describe("review of donations held by the velocity controls", () => {
     });
   });
 
-  it("lets a REVISOR also be GESTOR or DONANTE: the conflicts are decided per donation", async () => {
-    const reviewer = { sub: "sub-3", groups: ["REVISOR", "GESTOR", "DONANTE"] };
+  it("lets a REVISOR also be DONANTE: the conflict with their own donations is decided per donation", async () => {
+    const reviewer = { sub: "sub-3", groups: ["REVISOR", "DONANTE"] };
 
     expect(violatesSeparationOfDuties(reviewer.groups)).toBe(false);
     expect(
@@ -202,6 +202,18 @@ describe("review of donations held by the velocity controls", () => {
         authorizer
       )
     ).toEqual({ allowed: true });
+  });
+
+  it("refuses a REVISOR who is also GESTOR everything: one person would approve what they publish", async () => {
+    const both = { sub: "sub-4", groups: ["REVISOR", "GESTOR"] };
+
+    expect(violatesSeparationOfDuties(both.groups)).toBe(true);
+    for (const action of [AUTHZ_ACTIONS.reviewDonation, AUTHZ_ACTIONS.createProject]) {
+      expect(await authorize({ principal: both, action, resourceType: "Donation" }, authorizer)).toEqual({
+        allowed: false,
+        reason: "SEPARATION_OF_DUTIES",
+      });
+    }
   });
 
   it("revalidates the session and the groups of a review decision", () => {

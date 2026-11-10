@@ -7,6 +7,7 @@ Esquema en [data-model.md](../data-model.md). Este contrato fija el comportamien
 - Único punto: `recordAuditEvent(params)`, invocado por `withAuth`, por el disparador de Cognito, por `createDonation` para los eventos de velocidad (`DONATION_RATE_LIMITED`, `SUSPICIOUS_VELOCITY`) y por la revisión (`REVIEW_DECISION`, `REVIEW_EXPIRED`).
 - Entrada: `eventType`, `requestId`, `actorSub?`, `system?`, `resourceRef`, `action`, `outcome`, `reason?`, `details?` (solo números, como el total horario y su umbral; nunca datos personales).
 - `system: true` registra `actorRef = "system"` (acciones del sistema por calendario, como el vencimiento de revisiones).
+- `operator: true` registra `actorRef = "operator"` (un cambio hecho desde la línea de comandos con `npm run role`, fuera de la aplicación).
 
 ### Eventos de la revisión
 
@@ -17,6 +18,16 @@ Esquema en [data-model.md](../data-model.md). Este contrato fija el comportamien
 | `AUTHZ_DECISION` | quien lo intentó | `ReviewDonation` / `ListReviews` | `donation:<id>` o `-` | `DENIED` | `ROLE`, `SEPARATION_OF_DUTIES`, `SESSION_REVOKED`, `ROLE_REVOKED` o `CONFLICT_OF_INTEREST` |
 
 El `projectId` no viaja en el evento: el modelo admite un solo `resourceRef` y `details` solo números; se obtiene de la donación.
+
+### Eventos de la administración de roles
+
+| Evento | Actor | `action` | `resourceRef` | `outcome` | `reason` |
+|---|---|---|---|---|---|
+| `ROLE_GRANTED` | ADMIN (seudónimo) o `operator` | `ChangeUserRole` u `OperatorChangeRole` | `user:<seudónimo del destinatario>` | `SUCCESS` | el rol dado (`DONANTE`, `GESTOR`, `REVISOR`; con el script también `AUDITOR`, `ADMIN`) |
+| `ROLE_REVOKED` | ADMIN (seudónimo) o `operator` | `ChangeUserRole` u `OperatorChangeRole` | `user:<seudónimo del destinatario>` | `SUCCESS` | el rol quitado |
+| `AUTHZ_DECISION` | quien lo intentó | `ChangeUserRole` / `ListUsers` | `-` | `DENIED` | `ROLE`, `SEPARATION_OF_DUTIES`, `SESSION_REVOKED`, `ROLE_REVOKED`, `ROLE_NOT_ASSIGNABLE`, `SELF_ROLE_CHANGE` o `PROTECTED_USER` |
+
+Nunca se guarda el correo ni el `sub` de nadie; dar o quitar un rol que la persona ya tiene (o no tiene) no escribe ningún evento.
 - El `actorSub` nunca se persiste: se transforma en `actorRef` dentro de la función.
 - Inserción con `attribute_not_exists(auditDay)`; un conflicto se registra como error y no se reintenta.
 - Cuándo se escribe: ver la regla de auditoría en [with-auth.md](with-auth.md) (denegaciones de rutas protegidas y éxitos de acciones que cambian estado).

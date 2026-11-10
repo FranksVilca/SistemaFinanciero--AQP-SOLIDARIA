@@ -1,9 +1,12 @@
 import { AUTHZ_ACTIONS, PUBLIC_ACTIONS, ROLES, type AuthzAction } from "../shared/constants.js";
 import type { HandlerDenialReason } from "../shared/errors.js";
 import { logError } from "../shared/logger.js";
+import { violatesSeparationOfDuties } from "../shared/roleRules.js";
 import type { AuthPrincipal } from "./claims.js";
 
-export type ResourceType = "Project" | "Donation" | "AuditEvent";
+export { violatesSeparationOfDuties };
+
+export type ResourceType = "Project" | "Donation" | "AuditEvent" | "User";
 
 export interface AuthzContext {
   principal?: AuthPrincipal;
@@ -39,18 +42,12 @@ const ROLE_BY_ACTION: Partial<Record<AuthzAction, string>> = {
   [AUTHZ_ACTIONS.viewAudit]: ROLES.auditor,
   [AUTHZ_ACTIONS.listReviews]: ROLES.reviewer,
   [AUTHZ_ACTIONS.reviewDonation]: ROLES.reviewer,
+  [AUTHZ_ACTIONS.listUsers]: ROLES.admin,
+  [AUTHZ_ACTIONS.changeUserRole]: ROLES.admin,
 };
 
-const KNOWN_ROLES: readonly string[] = Object.values(ROLES);
-
-/**
- * The auditor audits what the other roles do, so the role cannot be combined with any other: the same person would
- * audit their own actions.
- */
-export function violatesSeparationOfDuties(groups: readonly string[]): boolean {
-  const roles = groups.filter((group) => KNOWN_ROLES.includes(group));
-  return roles.includes(ROLES.auditor) && roles.length > 1;
-}
+// Which roles cannot be held together (the auditor and the administrator alone, a manager is not a reviewer) lives in
+// shared/roleRules.ts. Someone who combines them is refused every protected action, whatever role the action asks for.
 
 export function holdsRequiredRole(groups: readonly string[], action: AuthzAction): boolean {
   if (violatesSeparationOfDuties(groups)) return false;

@@ -31,7 +31,7 @@ Una fundación peruana administra proyectos sociales (educación, alimentación 
 | Revisar donaciones `EN_REVISION` (aprobar o rechazar) | No | No | No | No | Sí |
 | **MFA obligatorio** | — | Opcional | **Sí** | **Sí** | **Sí** |
 
-Los roles se representan como **grupos de Cognito** (`DONANTE`, `GESTOR`, `AUDITOR`, `REVISOR`) y se leen del claim `cognito:groups` del access token. Los permisos se verifican **siempre en backend**, nunca solo ocultando botones. Usuarios y proyectos son ficticios.
+Los roles se representan como **grupos de Cognito** (`DONANTE`, `GESTOR`, `AUDITOR`, `REVISOR`, `ADMIN`) y se leen del claim `cognito:groups` del access token. Los permisos se verifican **siempre en backend**, nunca solo ocultando botones. Usuarios y proyectos son ficticios.
 
 ## 2. Épicas e historias de usuario
 
@@ -112,8 +112,17 @@ Prioridad: **MVP** = obligatorio; **Extensión** = puntos adicionales, no necesa
 - **CA-13.1:** Solo REVISOR (con MFA, scope `api/donations.review`) consulta la cola `GET /v1/reviews`: donaciones `EN_REVISION`, de la más antigua a la más reciente, paginadas (`limit`, `nextToken` opaco), con el motivo de la retención y un seudónimo del donante; nunca el `donorSub`.
 - **CA-13.2:** `POST /v1/donations/{donationId}/review` exige `decision` (`APROBAR` o `RECHAZAR`) y `motivo` (10 a 500 caracteres tras recortar espacios). `APROBAR` deja la donación en `PENDIENTE_SIMULACION` (el donante puede confirmarla); `RECHAZAR` la deja en `RECHAZADA_REVISION`, estado terminal que nunca suma al proyecto.
 - **CA-13.3:** La decisión solo se aplica si la donación sigue `EN_REVISION` (escritura condicional); si ya cambió responde 409. De dos decisiones concurrentes, exactamente una tiene éxito.
-- **CA-13.4 (cuatro ojos):** un REVISOR no decide sobre una donación propia ni sobre una de un proyecto que creó (403, auditado como `CONFLICT_OF_INTEREST`); AUDITOR y REVISOR no se combinan. Es una acción sensible: se revalidan la sesión y los grupos.
+- **CA-13.4 (cuatro ojos):** un REVISOR no decide sobre una donación propia ni sobre una de un proyecto que creó (403, auditado como `CONFLICT_OF_INTEREST`); AUDITOR no se combina con ningún otro rol y GESTOR y REVISOR tampoco (`SEPARATION_OF_DUTIES`). Es una acción sensible: se revalidan la sesión y los grupos.
 - **CA-13.5:** Cada decisión registra `REVIEW_DECISION` (sin el motivo). Un job diario rechaza como `RECHAZADA_REVISION` («Vencida sin revisión») las donaciones con más de `ReviewExpiryDays` (7 por defecto) en revisión y registra `REVIEW_EXPIRED` con actor `system`.
+
+**HU-14 — Administrar roles (Extensión).** Como administrador quiero dar y quitar roles a las personas desde la aplicación, para no depender de comandos de AWS, sin que el administrador pueda concederse poder a sí mismo ni silenciar al auditor.
+
+- **CA-14.1:** Solo ADMIN (con MFA, scope `api/admin.users`) consulta `GET /v1/admin/users`: personas del pool con sus roles, búsqueda por inicio de correo, paginada (`limit` hasta 25, `nextToken` opaco). Por persona indica qué roles se le pueden dar o quitar según las reglas.
+- **CA-14.2:** `POST /v1/admin/users/{userId}/roles` con `action` (`ADD` o `REMOVE`) y `role`. Desde la aplicación solo se gestionan `DONANTE`, `GESTOR` y `REVISOR`; `AUDITOR` y `ADMIN` responden 403 (`ROLE_NOT_ASSIGNABLE`): se asignan con el script de operación.
+- **CA-14.3 (cuatro ojos):** un ADMIN no cambia sus propios roles (403 `SELF_ROLE_CHANGE`) ni los de quien tiene `AUDITOR` o `ADMIN` (403 `PROTECTED_USER`): así nadie puede silenciar al auditor ni crear administradores desde la aplicación.
+- **CA-14.4:** Las combinaciones que no pueden existir se rechazan al asignar (409): `AUDITOR` y `ADMIN` van solos, y `GESTOR` y `REVISOR` no se combinan. Dar un rol que ya se tiene, o quitar uno que no se tiene, responde 200 con `changed: false` sin escribir ni auditar.
+- **CA-14.5:** Las dos rutas son acciones sensibles: se revalidan la sesión y los grupos contra Cognito. Cada cambio registra `ROLE_GRANTED` o `ROLE_REVOKED` con administrador y destinatario seudonimizados (nunca el correo) y el rol en `reason`.
+- **CA-14.6:** `npm run role` (script de operación, con credenciales de AWS) hace lo que la pantalla no puede: dar `AUDITOR` o `ADMIN` (con `set`, que deja exactamente esos roles) y crear al primer administrador. Aplica las mismas reglas, pide confirmación y registra el cambio con actor `operator`.
 
 **HU-10 — Consultar auditoría (Extensión).** Como auditor quiero consultar acciones críticas para investigar desviaciones.
 
@@ -185,9 +194,9 @@ Prioridad: **MVP** = obligatorio; **Extensión** = puntos adicionales, no necesa
 
 ## 5. Priorización y criterios de terminado (Definition of Done)
 
-**MVP obligatorio:** HU-01 a HU-09, HU-11, HU-13 y RNF-HU-01 a RNF-HU-11. **Extensión:** HU-10 y HU-12. Se admite simplificar la interfaz, **no** eliminar controles de seguridad. No se sustituirá Cognito por un JWT autoemitido ni por un login ficticio presentado como Zero Trust.
+**MVP obligatorio:** HU-01 a HU-09, HU-11, HU-13 y RNF-HU-01 a RNF-HU-11. **Extensión:** HU-10, HU-12 y HU-14. Se admite simplificar la interfaz, **no** eliminar controles de seguridad. No se sustituirá Cognito por un JWT autoemitido ni por un login ficticio presentado como Zero Trust.
 
-Entregado cuando: (a) demo con usuarios de prueba de los cuatro roles; (b) pruebas T01–T14 ejecutadas con evidencia; (c) logs sin secretos; (d) README con despliegue, limpieza y restricciones de la cuenta; (e) GitHub con PR revisados y CI en verde; (f) tabla de mapeo NIST; (g) `AI_USAGE.md` completo; (h) recursos AWS eliminados tras la evaluación.
+Entregado cuando: (a) demo con usuarios de prueba de los cinco roles; (b) pruebas T01–T14 ejecutadas con evidencia; (c) logs sin secretos; (d) README con despliegue, limpieza y restricciones de la cuenta; (e) GitHub con PR revisados y CI en verde; (f) tabla de mapeo NIST; (g) `AI_USAGE.md` completo; (h) recursos AWS eliminados tras la evaluación.
 
 ## 6. Casos de prueba de aceptación mínimos
 

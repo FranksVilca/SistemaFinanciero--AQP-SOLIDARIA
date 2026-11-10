@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   ANONYMOUS_ACTOR,
+  OPERATOR_ACTOR,
   SYSTEM_ACTOR,
   type AuditAction,
   type AuditEventType,
@@ -19,6 +20,8 @@ export interface AuditEventInput {
   actorSub?: string;
   /** The system acted on its own (a scheduled job): recorded as SYSTEM_ACTOR instead of a person. */
   system?: boolean;
+  /** An operator acted from the command line, outside the application: recorded as OPERATOR_ACTOR. */
+  operator?: boolean;
   resourceRef: string;
   action: AuditAction;
   outcome: AuditOutcome;
@@ -34,6 +37,12 @@ export interface AuditEventInput {
 export function pseudonymizeActor(actorSub: string | undefined): string {
   if (!actorSub) return ANONYMOUS_ACTOR;
   return PSEUDONYM_PREFIX + createHash("sha256").update(actorSub).digest("hex").slice(0, PSEUDONYM_HEX_LENGTH);
+}
+
+function actorRefOf(input: AuditEventInput): string {
+  if (input.system) return SYSTEM_ACTOR;
+  if (input.operator) return OPERATOR_ACTOR;
+  return pseudonymizeActor(input.actorSub);
 }
 
 /**
@@ -54,7 +63,7 @@ export async function recordAuditEvent(input: AuditEventInput): Promise<void> {
         timestamp,
         eventType: input.eventType,
         requestId: input.requestId,
-        actorRef: input.system ? SYSTEM_ACTOR : pseudonymizeActor(input.actorSub),
+        actorRef: actorRefOf(input),
         resourceRef: input.resourceRef,
         action: input.action,
         outcome: input.outcome,

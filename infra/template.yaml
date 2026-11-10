@@ -428,6 +428,15 @@ Resources:
       UserPoolId: !Ref CognitoUserPool
       Description: Grupo para revisores de donaciones retenidas EN_REVISION (el MFA TOTP es obligatorio para todo el pool)
 
+  # Manages who holds which role and nothing else; it is held alone (see backend/src/shared/roleRules.ts). The first
+  # administrator is created with the operator script (npm run role), because the application cannot name its own.
+  CognitoGroupAdmin:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: ADMIN
+      UserPoolId: !Ref CognitoUserPool
+      Description: Grupo para administradores de roles (va solo; el MFA TOTP es obligatorio para todo el pool)
+
   CognitoUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
@@ -474,6 +483,8 @@ Resources:
           ScopeDescription: Permiso para consultar registros de auditoría
         - ScopeName: donations.review
           ScopeDescription: Permiso para revisar donaciones retenidas EN_REVISION
+        - ScopeName: admin.users
+          ScopeDescription: Permiso para administrar los roles de los usuarios
 
   CognitoUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
@@ -503,6 +514,7 @@ Resources:
         - api/donations.read
         - api/audit.read
         - api/donations.review
+        - api/admin.users
       SupportedIdentityProviders:
         - COGNITO
       # The deployed SPA is served by CloudFront; localhost is only allowed in the academic stage.
@@ -917,6 +929,74 @@ Resources:
           Properties:
             Schedule: rate(1 day)
             Enabled: true
+
+  # ============================================================================
+  # LAMBDA FUNCTIONS (Módulo Administración de roles)
+  # ============================================================================
+  # Cognito cannot limit these actions to some groups in IAM, so what an administrator may touch (DONANTE, GESTOR and
+  # REVISOR, never AUDITOR or ADMIN, never themselves) is enforced in the code and proven by its tests.
+  ListUsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/dist/
+      Handler: admin/listUsers.handler
+      Environment:
+        Variables:
+          # The pool whose users it lists and whose groups it reads (also for the revalidation of the caller).
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:ListUsers
+                - cognito-idp:AdminListGroupsForUser
+              Resource: !GetAtt CognitoUserPool.Arn
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AuditTable.Arn
+      Events:
+        ProtectedGet:
+          Type: HttpApi
+          Properties:
+            Path: /v1/admin/users
+            Method: GET
+            ApiId: !Ref HttpApi
+            Auth:
+              AuthorizationScopes:
+                - api/admin.users
+
+  ChangeUserRoleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/dist/
+      Handler: admin/changeUserRole.handler
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminGetUser
+                - cognito-idp:AdminListGroupsForUser
+                - cognito-idp:AdminAddUserToGroup
+                - cognito-idp:AdminRemoveUserFromGroup
+              Resource: !GetAtt CognitoUserPool.Arn
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AuditTable.Arn
+      Events:
+        ProtectedPost:
+          Type: HttpApi
+          Properties:
+            Path: /v1/admin/users/{userId}/roles
+            Method: POST
+            ApiId: !Ref HttpApi
+            Auth:
+              AuthorizationScopes:
+                - api/admin.users
 
   # ============================================================================
   # LAMBDA FUNCTIONS (Módulo Auditoría)

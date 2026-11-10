@@ -9,6 +9,7 @@ import { DonorHistoryPage } from "./pages/DonorHistoryPage.js";
 import { ManagerDashboardPage } from "./pages/ManagerDashboardPage.js";
 import { AuditorPage } from "./pages/AuditorPage.js";
 import { ReviewerPage } from "./pages/ReviewerPage.js";
+import { AdminPage } from "./pages/AdminPage.js";
 import { AuthCallbackPage } from "./pages/AuthCallbackPage.js";
 
 const queryClient = new QueryClient({
@@ -35,6 +36,7 @@ export const App: React.FC = () => {
                 <Route path="/manager" element={<ManagerDashboardPage />} />
                 <Route path="/auditor" element={<AuditorPage />} />
                 <Route path="/reviews" element={<ReviewerPage />} />
+                <Route path="/admin" element={<AdminPage />} />
                 <Route path="/auth/callback" element={<AuthCallbackPage />} />
               </Routes>
             </main>

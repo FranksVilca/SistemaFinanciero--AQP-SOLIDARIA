@@ -36,6 +36,9 @@ const MATRIX: Record<string, Partial<Record<Table, string[]>>> = {
   // Review of the donations held by the velocity controls.
   "reviews/listReviews.handler": { DonationsTable: READ, AuditTable: PUT },
   "reviews/reviewDonation.handler": { ProjectsTable: READ, DonationsTable: [...READ, ...UPDATE], AuditTable: PUT },
+  // Administration of roles: it talks to Cognito (see roleRevalidation.test.ts) and only records its denials.
+  "admin/listUsers.handler": { AuditTable: PUT },
+  "admin/changeUserRole.handler": { AuditTable: PUT },
   // Scheduled job: no route.
   "reviews/expireReviews.handler": { DonationsTable: [...READ, ...UPDATE], AuditTable: PUT },
   // Cognito trigger: records that it gave the donor role.

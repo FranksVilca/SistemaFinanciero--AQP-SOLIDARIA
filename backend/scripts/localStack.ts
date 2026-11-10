@@ -80,7 +80,7 @@ function exportEmulatorCertificate(): string | undefined {
 }
 
 function printSummary(stack: LocalStack, envFile: string, certificate: string | undefined): void {
-  const users = DEMO_USERS.map((user) => `   ${user.email.padEnd(28)} ${user.role}`).join("\n");
+  const users = DEMO_USERS.map((user) => `   ${user.email.padEnd(34)} ${user.role}`).join("\n");
   const trust = certificate
     ? `:\n   ${certificate}\n   (Windows: certutil -user -addstore Root "${certificate}")`
     : ".";
@@ -112,10 +112,19 @@ async function main(): Promise<void> {
 
   printSummary(stack, writeFrontendEnvironment(stack), exportEmulatorCertificate());
 
+  // Vite gives the environment of the process priority over .env.local: a VITE_* variable left in this terminal (from a
+  // run against the real AWS) would silently win and the SPA would ask the real Cognito for scopes of the emulator.
+  // Setting them here makes the emulator the only answer, whatever the terminal holds.
   const frontend = spawn("npm", ["run", "dev", "--workspace=frontend"], {
     cwd: REPOSITORY_ROOT,
     stdio: "inherit",
     shell: true,
+    env: {
+      ...process.env,
+      VITE_API_BASE_URL: `${stack.baseUrl}/v1`,
+      VITE_COGNITO_AUTHORITY: stack.authority,
+      VITE_COGNITO_CLIENT_ID: stack.pool.clientId,
+    },
   });
   await new Promise<void>((resolveExit) => frontend.on("exit", () => resolveExit()));
 }

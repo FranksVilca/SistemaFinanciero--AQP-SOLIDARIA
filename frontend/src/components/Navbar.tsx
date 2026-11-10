@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.js";
-import { HeartHandshake, LogIn, LogOut, Shield, User, FileText, ClipboardCheck } from "lucide-react";
+import { HeartHandshake, LogIn, LogOut, Shield, User, FileText, ClipboardCheck, Users } from "lucide-react";
 
 export const Navbar: React.FC = () => {
   const { user, roles, authError, login, logout } = useAuth();
@@ -10,6 +10,7 @@ export const Navbar: React.FC = () => {
   const isGestor = roles.includes("GESTOR");
   const isAuditor = roles.includes("AUDITOR");
   const isRevisor = roles.includes("REVISOR");
+  const isAdmin = roles.includes("ADMIN");
 
   return (
     <nav className="bg-white border-b border-slate-200 sticky top-0 z-40">
@@ -57,6 +58,15 @@ export const Navbar: React.FC = () => {
                 className="text-slate-600 hover:text-indigo-600 transition-colors flex items-center gap-1"
               >
                 <ClipboardCheck className="w-4 h-4" /> Revisión
+              </Link>
+            )}
+
+            {isAdmin && (
+              <Link
+                to="/admin"
+                className="text-slate-600 hover:text-indigo-600 transition-colors flex items-center gap-1"
+              >
+                <Users className="w-4 h-4" /> Usuarios
               </Link>
             )}
 

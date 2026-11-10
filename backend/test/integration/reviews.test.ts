@@ -158,7 +158,8 @@ describe("human review of the donations held by the velocity controls", () => {
   });
 
   it("refuses a reviewer who created the project, and one who is the donor", async () => {
-    const managerAndReviewer: TestIdentity = { sub: `manager-${randomUUID()}`, groups: ["GESTOR", "REVISOR"] };
+    // Created the project while they were a manager; GESTOR and REVISOR cannot be combined, so today they only review.
+    const managerAndReviewer: TestIdentity = { sub: `manager-${randomUUID()}`, groups: ["REVISOR", "DONANTE"] };
     const ownProject = String((await seedProject({ createdBy: managerAndReviewer.sub })).projectId);
     const donorAndReviewer: TestIdentity = { sub: `donor-${randomUUID()}`, groups: ["DONANTE", "REVISOR"] };
     const toOwnProject = await heldDonationOf(donor, ownProject);

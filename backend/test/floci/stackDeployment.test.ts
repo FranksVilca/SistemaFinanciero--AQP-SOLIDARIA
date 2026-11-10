@@ -14,10 +14,11 @@ import { countOf, deleteStack, deployStack, physicalIdOf, productionEquivalentTe
  * asserted in test/infra and test/floci/iamEnforcement.test.ts.
  */
 
-// Eleven API functions (one route each), the Cognito trigger that makes whoever registers a donor and the scheduled
-// job that expires the reviews nobody resolved.
-const FUNCTIONS_IN_ACADEMIC = 13;
-const ROUTES_IN_ACADEMIC = 11;
+// Thirteen API functions (one route each: nine of the platform, two of the review and two of the administration of
+// roles), the Cognito trigger that makes whoever registers a donor and the scheduled job that expires the reviews
+// nobody resolved.
+const FUNCTIONS_IN_ACADEMIC = 15;
+const ROUTES_IN_ACADEMIC = 13;
 const LOG_RETENTION_DAYS = 14;
 
 const config = {
@@ -37,7 +38,7 @@ describe("academic stage", () => {
   });
   afterAll(() => deleteStack(stackName));
 
-  it("creates the ten functions, the four tables and the identity pieces", () => {
+  it("creates every function, the four tables and the identity pieces", () => {
     expect(countOf(resources, "AWS::Lambda::Function")).toBe(FUNCTIONS_IN_ACADEMIC);
     expect(countOf(resources, "AWS::DynamoDB::Table")).toBe(4);
     expect(countOf(resources, "AWS::Cognito::UserPool")).toBe(1);
@@ -118,7 +119,7 @@ describe("production stage (template without the simulation function)", () => {
   });
   afterAll(() => deleteStack(stackName));
 
-  it("has eight functions and eight routes: the simulation endpoint does not exist", () => {
+  it("has one function and one route less than the academic stage: the simulation endpoint does not exist", () => {
     expect(countOf(resources, "AWS::Lambda::Function")).toBe(FUNCTIONS_IN_ACADEMIC - 1);
     expect(countOf(resources, "AWS::ApiGatewayV2::Route")).toBe(ROUTES_IN_ACADEMIC - 1);
   });

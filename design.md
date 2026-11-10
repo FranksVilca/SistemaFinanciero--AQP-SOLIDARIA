@@ -74,6 +74,7 @@ flowchart TD
 - `authz`: deriva `sub` y `cognito:groups` del contexto del authorizer; aplica RBAC y ownership contra el recurso persistido.
 - `audit`: eventos estructurados y correlación por `requestId`.
 - `reviews`: cola y decisión de REVISOR sobre donaciones `EN_REVISION`, y job diario de vencimiento.
+- `admin`: listado de personas con sus roles y alta/baja de DONANTE, GESTOR y REVISOR por un ADMIN; reglas en `shared/roleRules.ts`.
 
 ### Endpoints mínimos
 
@@ -90,6 +91,8 @@ flowchart TD
 | GET | `/v1/audit` | `api/audit.read` + AUDITOR (extensión) | 200 / 401 / 403 |
 | GET | `/v1/reviews` | `api/donations.review` + REVISOR | 200 / 400 / 401 / 403 |
 | POST | `/v1/donations/{donationId}/review` | `api/donations.review` + REVISOR (acción sensible; ni donante ni creador del proyecto) | 200 / 400 / 401 / 403 / 404 / 409 |
+| GET | `/v1/admin/users` | `api/admin.users` + ADMIN (acción sensible) | 200 / 400 / 401 / 403 |
+| POST | `/v1/admin/users/{userId}/roles` | `api/admin.users` + ADMIN (acción sensible; no a sí mismo, no a AUDITOR/ADMIN) | 200 / 400 / 401 / 403 / 404 / 409 |
 
 - Cabecera `Authorization: Bearer <access_token>`; las rutas protegidas declaran `AuthorizationScopes` en SAM, de modo que un ID token es rechazado.
 - `POST /v1/donations` exige `Idempotency-Key` (UUID) y body `{ projectId, amountCents }`; `donorSub` se toma del contexto del authorizer.
@@ -112,7 +115,19 @@ flowchart TD
 3. Un `UpdateItem` con condición `status = EN_REVISION` deja `PENDIENTE_SIMULACION` (aprobada; el donante la confirma con el paso 6) o `RECHAZADA_REVISION` (terminal), con `reviewDecision`, `reviewMotivo`, `reviewedBy` (seudónimo) y `reviewedAt`; si la condición falla, 409. Se audita `REVIEW_DECISION`.
 4. Un job diario (evento `Schedule` de SAM, regla de EventBridge) consulta el GSI por `createdAt < ahora − ReviewExpiryDays` en páginas de 25, máximo 100 por ejecución, y rechaza cada una con la misma escritura condicional (motivo «Vencida sin revisión», actor `system`, evento `REVIEW_EXPIRED`).
 
-**Roles combinables:** AUDITOR no se combina con ningún otro rol. REVISOR puede ser también GESTOR o DONANTE: los conflictos reales (donación propia, proyecto propio) se deciden por donación; separar por completo REVISOR de GESTOR exigiría más personas de las que tiene una fundación pequeña sin cerrar un riesgo adicional.
+**Roles combinables** (una sola tabla, `backend/src/shared/roleRules.ts`, que usan el motor de autorización, la API de administración y el script):
+
+| | DONANTE | GESTOR | REVISOR | AUDITOR | ADMIN |
+|---|:-:|:-:|:-:|:-:|:-:|
+| **DONANTE** | n/a | sí | sí | no | no |
+| **GESTOR** | sí | n/a | no | no | no |
+| **REVISOR** | sí | no | n/a | no | no |
+| **AUDITOR** | no | no | no | n/a | no |
+| **ADMIN** | no | no | no | no | n/a |
+
+AUDITOR (vigila) y ADMIN (nombra roles) van solos: si además actuaran sobre la plataforma, se auditarían o se concederían poder a sí mismos. GESTOR y REVISOR no se combinan porque la misma persona publicaría proyectos y aprobaría sus donaciones retenidas; la comprobación por proyecto de la revisión solo cubre los proyectos que creó ella misma. DONANTE se combina con GESTOR o REVISOR: el conflicto con sus propias donaciones y proyectos se decide por donación. Quien combina roles incompatibles recibe 403 `SEPARATION_OF_DUTIES` en toda acción protegida.
+
+**Administración de roles.** El ADMIN solo gestiona DONANTE, GESTOR y REVISOR; no cambia sus propios roles ni los de quien tiene AUDITOR o ADMIN (por eso nunca puede quedar el sistema sin administrador ni silenciar al auditor), y la combinación se valida al asignar (409) y de nuevo al usar (403). Cognito no permite limitar en IAM por nombre de grupo, así que esa barrera está en el código de `changeUserRole` y la prueban `test/admin/*`. AUDITOR, ADMIN y el primer administrador se asignan con `npm run role`, que aplica las mismas reglas y deja el cambio en la auditoría con actor `operator`.
 
 ## 5. Modelo de datos y consistencia
 
@@ -160,6 +175,7 @@ flowchart TD
 | Abuso / fuerza bruta | Throttling del stage HTTP API; protecciones de Cognito | Configuración SAM |
 | Ráfagas de un bot / fraccionamiento | Límite por donante y minuto (429) y revisión horaria por monto y por donaciones cercanas al máximo (`EN_REVISION`) | `test/integration/velocity.test.ts` |
 | Revisión sin control / autoaprobación | REVISOR con MFA, acción sensible, cuatro ojos (ni donante ni creador del proyecto), escritura condicional y vencimiento a los 7 días | `test/reviews/*.test.ts`, `test/integration/reviews.test.ts` |
+| Escalada de privilegios por la gestión de roles | ADMIN que no opera, no se cambia a sí mismo ni a AUDITOR/ADMIN, solo asigna DONANTE/GESTOR/REVISOR, acción sensible y auditada (`ROLE_GRANTED`/`ROLE_REVOKED`) | `test/admin/*`, `test/roleRules.test.ts` |
 | XSS / robo de tokens | Tokens en memoria, CSP y cabeceras vía CloudFront | CA-NF11.1–2 |
 | Acceso excesivo a datos | Rol IAM por función con acciones y tablas mínimas | T10, IAM Access Analyzer |
 | Exposición de secretos | Sin secretos en SPA ni repo; secret scanning de GitHub | Repo limpio |

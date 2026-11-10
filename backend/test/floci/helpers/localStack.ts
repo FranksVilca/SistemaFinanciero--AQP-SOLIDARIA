@@ -1,5 +1,6 @@
 import { ListStacksCommand } from "@aws-sdk/client-cloudformation";
-import { createUserInGroup, hostedSignIn, type PoolRef } from "./cognitoUsers.js";
+import { AdminAddUserToGroupCommand } from "@aws-sdk/client-cognito-identity-provider";
+import { cognito, createUserInGroup, hostedSignIn, type PoolRef } from "./cognitoUsers.js";
 import { prepareFunctions } from "./functions.js";
 import {
   STAGE,
@@ -18,10 +19,34 @@ export const LOCAL_STACK_NAME = "aqp-local";
 export const DEMO_PASSWORD = "Passw0rd!x";
 
 export const DEMO_USERS = [
-  { email: "donante@aqpsolidaria.pe", group: "DONANTE", role: "Donante (dona a un proyecto y ve su historial)" },
-  { email: "gestor@aqpsolidaria.pe", group: "GESTOR", role: "Gestor (crea y publica proyectos)" },
-  { email: "auditor@aqpsolidaria.pe", group: "AUDITOR", role: "Auditor (consulta la auditoría)" },
-  { email: "revisor@aqpsolidaria.pe", group: "REVISOR", role: "Revisor (aprueba o rechaza donaciones en revisión)" },
+  { email: "donante@aqpsolidaria.pe", groups: ["DONANTE"], role: "Donante (dona a un proyecto y ve su historial)" },
+  { email: "gestor@aqpsolidaria.pe", groups: ["GESTOR"], role: "Gestor (crea y publica proyectos)" },
+  { email: "auditor@aqpsolidaria.pe", groups: ["AUDITOR"], role: "Auditor (consulta la auditoría)" },
+  { email: "revisor@aqpsolidaria.pe", groups: ["REVISOR"], role: "Revisor (aprueba o rechaza donaciones en revisión)" },
+  // Alone: ADMIN is not combined with any other role (src/shared/roleRules.ts).
+  { email: "admin@aqpsolidaria.pe", groups: ["ADMIN"], role: "Administrador (da y quita roles a las personas)" },
+  // The combinations that are allowed, to try the conflicts that are decided per donation.
+  {
+    email: "donante.revisor@aqpsolidaria.pe",
+    groups: ["DONANTE", "REVISOR"],
+    role: "Donante y revisor (no ve en la cola sus propias donaciones retenidas)",
+  },
+  {
+    email: "donante.gestor@aqpsolidaria.pe",
+    groups: ["DONANTE", "GESTOR"],
+    role: "Donante y gestor (no puede donar a un proyecto que creó)",
+  },
+  // A combination that cannot exist, created straight in the pool to see the refusal: every protected action is a 403.
+  {
+    email: "invalido@aqpsolidaria.pe",
+    groups: ["GESTOR", "REVISOR"],
+    role: "INVÁLIDO a propósito: gestor y revisor a la vez (todo da 403 SEPARATION_OF_DUTIES)",
+  },
+  {
+    email: "invalido.auditor@aqpsolidaria.pe",
+    groups: ["DONANTE", "AUDITOR"],
+    role: "INVÁLIDO a propósito: donante y auditor a la vez (todo da 403 SEPARATION_OF_DUTIES)",
+  },
 ] as const;
 
 const DEMO_PROJECTS = [
@@ -94,7 +119,15 @@ export async function bootLocalStack(stackName: string, domainPrefix: string): P
     userPoolId: physicalIdOf(resources, "AWS::Cognito::UserPool"),
     clientId: physicalIdOf(resources, "AWS::Cognito::UserPoolClient"),
   };
-  for (const user of DEMO_USERS) await createUserInGroup(pool, user.email, user.group);
+  for (const user of DEMO_USERS) {
+    const [first, ...others] = user.groups;
+    await createUserInGroup(pool, user.email, first);
+    for (const group of others) {
+      await cognito.send(
+        new AdminAddUserToGroupCommand({ UserPoolId: pool.userPoolId, Username: user.email, GroupName: group })
+      );
+    }
+  }
 
   const { scopes, redirectUri } = signInSettings();
   const manager = await hostedSignIn(pool, "gestor@aqpsolidaria.pe", scopes, redirectUri);

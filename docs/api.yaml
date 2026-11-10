@@ -361,6 +361,101 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /admin/users:
+    get:
+      summary: Listar personas con sus roles (solo ADMIN)
+      description: >
+        Personas del pool con sus roles y, para cada una, qué roles se le pueden dar o quitar según las reglas
+        (`addable`, `removable`). Nunca incluye el `sub`. Es una acción sensible: se revalidan la sesión y los grupos
+        contra Cognito. `nextToken` es opaco.
+      operationId: listUsers
+      security:
+        - CognitoJWT:
+            - api/admin.users
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 25
+            default: 20
+        - name: email
+          in: query
+          required: false
+          description: Inicio del correo (letras, dígitos y `. _ % + @ -`, hasta 64 caracteres).
+          schema:
+            type: string
+        - name: nextToken
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Página de personas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUsersPage'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          description: Rol insuficiente, rol ADMIN revocado o roles combinados
+          $ref: '#/components/responses/403Forbidden'
+
+  /admin/users/{userId}/roles:
+    post:
+      summary: Dar o quitar un rol a una persona (solo ADMIN)
+      description: >
+        Solo `DONANTE`, `GESTOR` y `REVISOR`; `AUDITOR` y `ADMIN` se asignan con el script de operación (403
+        `ROLE_NOT_ASSIGNABLE`). No se puede cambiar la propia cuenta (403 `SELF_ROLE_CHANGE`) ni la de quien tiene
+        `AUDITOR` o `ADMIN` (403 `PROTECTED_USER`). Una combinación que no puede existir (`GESTOR` con `REVISOR`) se rechaza
+        con 409. Dar un rol que ya se tiene, o quitar uno que no se tiene, responde 200 con `changed: false`. Es una
+        acción sensible y cada cambio se audita (`ROLE_GRANTED` / `ROLE_REVOKED`).
+      operationId: changeUserRole
+      security:
+        - CognitoJWT:
+            - api/admin.users
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeUserRoleRequest'
+      responses:
+        '200':
+          description: Cambio aplicado (o ya estaba así)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangeUserRoleResult'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          description: Rol insuficiente, rol revocado, rol no asignable desde la aplicación, cuenta propia o cuenta protegida
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '409':
+          description: El resultado combinaría roles incompatibles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /audit:
     get:
       summary: Consultar eventos de auditoría (solo AUDITOR)
@@ -423,6 +518,7 @@ components:
             api/donations.read: Permiso para consultar historial de donaciones propias
             api/audit.read: Permiso para consultar logs de auditoría
             api/donations.review: Permiso para revisar donaciones retenidas EN_REVISION
+            api/admin.users: Permiso para administrar los roles de los usuarios
 
   responses:
     400BadRequest:
@@ -663,6 +759,73 @@ components:
         reviewedAt:
           type: string
           format: date-time
+
+    AdminUsersPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminUser'
+        nextToken:
+          type: string
+          description: Opaco; ausente en la última página.
+
+    AdminUser:
+      type: object
+      required: [userId, roles, isSelf, isProtected, addable, removable]
+      properties:
+        userId:
+          type: string
+          description: Nombre del usuario en el pool, el que se usa en la ruta de cambio.
+        email:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [DONANTE, GESTOR, REVISOR, AUDITOR, ADMIN]
+        isSelf:
+          type: boolean
+        isProtected:
+          type: boolean
+          description: Tiene AUDITOR o ADMIN; solo el script de operación lo cambia.
+        addable:
+          type: array
+          items:
+            type: string
+            enum: [DONANTE, GESTOR, REVISOR]
+        removable:
+          type: array
+          items:
+            type: string
+            enum: [DONANTE, GESTOR, REVISOR]
+
+    ChangeUserRoleRequest:
+      type: object
+      required: [action, role]
+      properties:
+        action:
+          type: string
+          enum: [ADD, REMOVE]
+        role:
+          type: string
+          enum: [DONANTE, GESTOR, REVISOR, AUDITOR, ADMIN]
+          description: Solo DONANTE, GESTOR y REVISOR se aceptan; los otros responden 403.
+
+    ChangeUserRoleResult:
+      type: object
+      required: [userId, roles, changed]
+      properties:
+        userId:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        changed:
+          type: boolean
 
     AuditEvent:
       type: object

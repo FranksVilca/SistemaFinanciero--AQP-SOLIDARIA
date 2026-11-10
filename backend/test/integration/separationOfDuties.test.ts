@@ -11,9 +11,9 @@ import { buildEvent, parseBody, type TestIdentity } from "./helpers/events.js";
 import { clearAllTables, countDonationsOf, readAllAuditEvents, readProject, seedProject } from "./helpers/seed.js";
 
 /**
- * Roles are groups of the identity provider and one person can hold several. Two rules keep that safe:
- * the auditor role cannot be combined with another (it would audit its own actions), and whoever created a project
- * cannot donate to it (it would raise its own amount).
+ * Roles are groups of the identity provider and one person can hold several. Rules keep that safe: the auditor and the
+ * administrator roles cannot be combined with another (they would audit or grant their own actions), a manager is not a
+ * reviewer (shared/roleRules.ts), and whoever created a project cannot donate to it (it would raise its own amount).
  */
 
 const person = (...groups: string[]): TestIdentity => ({ sub: `person-${randomUUID()}`, groups });
@@ -39,13 +39,16 @@ async function publishedProjectCreatedBy(manager: TestIdentity): Promise<string>
   return created.projectId;
 }
 
-describe("separation of duties: the auditor role cannot be combined", () => {
+describe("separation of duties: the roles that cannot be combined", () => {
   beforeEach(clearAllTables);
 
   it.each([
     ["AUDITOR and DONANTE", ["AUDITOR", "DONANTE"]],
     ["AUDITOR and GESTOR", ["AUDITOR", "GESTOR"]],
     ["all three roles", ["AUDITOR", "GESTOR", "DONANTE"]],
+    ["REVISOR and GESTOR", ["REVISOR", "GESTOR"]],
+    ["ADMIN and DONANTE", ["ADMIN", "DONANTE"]],
+    ["ADMIN and AUDITOR", ["ADMIN", "AUDITOR"]],
   ])("refuses someone with %s every protected action, auditing why", async (_label, groups) => {
     const both = person(...groups);
     const project = await seedProject();

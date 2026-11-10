@@ -51,4 +51,4 @@ Para cada línea `Handler:` de `infra/template.yaml`, importar el módulo y comp
 
 ## Acciones sensibles y separación de funciones
 
-Revalidan sesión (`userInfo`) y grupos (`AdminListGroupsForUser`) y fallan cerrado: `PublishProject`, `ViewAudit`, `ReviewDonation` y la confirmación de `SimulateDonation`. AUDITOR no se combina con ningún otro rol (`SEPARATION_OF_DUTIES`). En `ReviewDonation` el handler deniega con `CONFLICT_OF_INTEREST` (403, auditado) si el revisor es el donante o el creador del proyecto (`createdBy`); REVISOR sí puede ser GESTOR o DONANTE.
+Revalidan sesión (`userInfo`) y grupos (`AdminListGroupsForUser`) y fallan cerrado: `PublishProject`, `ViewAudit`, `ReviewDonation`, `ListUsers`, `ChangeUserRole` y la confirmación de `SimulateDonation`. AUDITOR y ADMIN no se combinan con ningún otro rol, y GESTOR y REVISOR tampoco (`SEPARATION_OF_DUTIES`; reglas en `shared/roleRules.ts`). En `ReviewDonation` el handler deniega con `CONFLICT_OF_INTEREST` (403, auditado) si el revisor es el donante o el creador del proyecto (`createdBy`); REVISOR sí puede ser GESTOR o DONANTE.

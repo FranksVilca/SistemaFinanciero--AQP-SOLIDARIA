@@ -115,7 +115,38 @@ Los parámetros opcionales (GuardDuty y Security Hub con prueba de 30 días, PIT
 
 Los controles de velocidad de las donaciones se ajustan con `VelocityMaxPerMinute` (5), `VelocityReviewThresholdCents` (500000 = S/ 5,000) y `VelocityStructuringCount` (3); solo `CreateDonationFunction` los recibe como variables de entorno. Sus límites están en [docs/threat-model.md](docs/threat-model.md).
 
-Las donaciones que esos controles dejan `EN_REVISION` las resuelve una persona del grupo `REVISOR` (página «Revisión»): aprueba (vuelve a `PENDIENTE_SIMULACION`) o rechaza (`RECHAZADA_REVISION`) con un motivo obligatorio, nunca sobre una donación propia ni de un proyecto que creó, y AUDITOR no puede ser también REVISOR. `ReviewExpiryDays` (7) fija cuántos días puede quedar una donación sin revisar antes de que el job diario `ExpireReviewsFunction` la rechace. El grupo `REVISOR`, como `GESTOR` y `AUDITOR`, lo asigna un administrador.
+Las donaciones que esos controles dejan `EN_REVISION` las resuelve una persona del grupo `REVISOR` (página «Revisión»): aprueba (vuelve a `PENDIENTE_SIMULACION`) o rechaza (`RECHAZADA_REVISION`) con un motivo obligatorio, nunca sobre una donación propia ni de un proyecto que creó, y REVISOR no se combina con GESTOR ni con AUDITOR. `ReviewExpiryDays` (7) fija cuántos días puede quedar una donación sin revisar antes de que el job diario `ExpireReviewsFunction` la rechace. Los grupos `REVISOR`, `GESTOR`, `AUDITOR` y `ADMIN` los asigna un administrador (ver «Roles y administración de usuarios»).
+
+### Roles y administración de usuarios
+
+Quien se registra recibe `DONANTE` solo. Los demás roles se asignan después, y hay dos formas:
+
+**Desde la aplicación** (página «Usuarios», solo rol `ADMIN`): lista las personas, busca por correo y da o quita `DONANTE`, `GESTOR` y `REVISOR`. Un administrador no cambia sus propios roles ni los de quien es `AUDITOR` o `ADMIN`. Cada cambio queda en la auditoría.
+
+**Desde la terminal** (`npm run role`, con credenciales de AWS): hace lo que la pantalla no puede, `AUDITOR`, `ADMIN` y el primer administrador. Necesita una sesión de AWS (`aws login --profile aqp`) y toma el user pool del stack `aqp-solidaria-academic`:
+
+```bash
+npm run role -- list                                   # todas las personas y sus roles
+npm run role -- show  ana@correo.com
+npm run role -- add    ana@correo.com REVISOR          # añade un rol
+npm run role -- remove ana@correo.com DONANTE          # quita un rol
+npm run role -- set    ana@correo.com ADMIN            # deja exactamente ese rol (quita los demás)
+npm run role -- set    ana@correo.com ADMIN --dry-run  # solo muestra el plan, no cambia nada
+```
+
+Opciones: `--profile <perfil>`, `--stack <stack>`, `--pool <id>`, `--region <región>`, `--yes` (no pregunta). La persona debe cerrar sesión y volver a entrar para que su token lleve los roles nuevos.
+
+Qué roles pueden convivir (la misma tabla la usan la aplicación, la pantalla y el script, `backend/src/shared/roleRules.ts`):
+
+| | DONANTE | GESTOR | REVISOR | AUDITOR | ADMIN |
+|---|:-:|:-:|:-:|:-:|:-:|
+| **DONANTE** | n/a | sí | sí | no | no |
+| **GESTOR** | sí | n/a | no | no | no |
+| **REVISOR** | sí | no | n/a | no | no |
+| **AUDITOR** | no | no | no | n/a | no |
+| **ADMIN** | no | no | no | no | n/a |
+
+`AUDITOR` y `ADMIN` van solos. Quien combina roles que no pueden convivir recibe 403 en toda acción protegida. **El primer administrador** se crea con el script (`npm run role -- set <correo> ADMIN`), porque la aplicación no puede nombrar a su propio administrador.
 
 ### Paso 3: Construir y Publicar Frontend
 

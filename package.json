@@ -21,6 +21,7 @@
     "test:floci:e2e": "npm run test:floci:e2e --workspace=backend",
     "local": "npm run local:stack --workspace=backend",
     "local:stop": "npm run local:stop --workspace=backend",
+    "role": "npm run role --workspace=backend --",
     "local:trust": "certutil -user -addstore Root .local/floci-root-ca.crt",
     "test:browser": "npm run test:browser --workspace=backend"
   },

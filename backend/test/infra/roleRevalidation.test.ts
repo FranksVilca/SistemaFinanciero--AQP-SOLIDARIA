@@ -19,8 +19,20 @@ const SENSITIVE_HANDLERS = [
   "audit/getAuditEvents.handler",
   "donations/simulateDonation.handler",
   "reviews/reviewDonation.handler",
+  "admin/listUsers.handler",
+  "admin/changeUserRole.handler",
 ];
 const LIST_GROUPS = "cognito-idp:AdminListGroupsForUser";
+// The administration functions work on the pool itself; each gets exactly the calls its job needs, and nothing else.
+const ADMINISTRATION_ACTIONS: Record<string, string[]> = {
+  "admin/listUsers.handler": ["cognito-idp:ListUsers", LIST_GROUPS],
+  "admin/changeUserRole.handler": [
+    "cognito-idp:AdminGetUser",
+    LIST_GROUPS,
+    "cognito-idp:AdminAddUserToGroup",
+    "cognito-idp:AdminRemoveUserFromGroup",
+  ],
+};
 
 interface Statement {
   Effect: string;
@@ -49,15 +61,24 @@ describe.each(STAGES)("role revalidation permissions in stage %s", (stage) => {
 
   it("grants that single Cognito action, on the user pool of the stack only", () => {
     for (const [, definition] of functions) {
+      const handler = handlerOf(definition);
       const cognito = statementsOf(definition).filter((statement) =>
         actionsOf(statement).some((action) => action.startsWith("cognito-idp:"))
       );
 
       for (const statement of cognito) {
         expect(statement.Effect).toBe("Allow");
-        expect(actionsOf(statement)).toEqual([LIST_GROUPS]);
+        expect(actionsOf(statement), handler).toEqual(ADMINISTRATION_ACTIONS[handler] ?? [LIST_GROUPS]);
         expect(statement.Resource).toEqual({ "Fn::GetAtt": ["CognitoUserPool", "Arn"] });
       }
+    }
+  });
+
+  it("gives the administration functions no Cognito action that creates, deletes or signs in users", () => {
+    const destructive = /Create|Delete|Disable|Enable|Set|Update|ResetUserPassword|Initiate|Respond|Confirm/;
+
+    for (const handler of Object.keys(ADMINISTRATION_ACTIONS)) {
+      for (const action of ADMINISTRATION_ACTIONS[handler]) expect(action.replace("cognito-idp:", "")).not.toMatch(destructive);
     }
   });
 

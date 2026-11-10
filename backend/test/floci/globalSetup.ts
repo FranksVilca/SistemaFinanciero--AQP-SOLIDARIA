@@ -124,7 +124,7 @@ async function recreateUser(iam: IAMClient, userName: string, policyDocument: st
   return { accessKeyId: AccessKey!.AccessKeyId!, secretAccessKey: AccessKey!.SecretAccessKey! };
 }
 
-const ROLE_GROUPS = ["DONANTE", "GESTOR", "AUDITOR", "REVISOR"];
+const ROLE_GROUPS = ["DONANTE", "GESTOR", "AUDITOR", "REVISOR", "ADMIN"];
 
 async function createRolesPool(): Promise<{ userPoolId: string; arn: string }> {
   const cognito = new CognitoIdentityProviderClient(clientConfig);

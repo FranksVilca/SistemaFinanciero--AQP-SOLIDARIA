@@ -32,7 +32,8 @@ export class ForbiddenError extends AppError {
 }
 
 /** Refusals that a handler decides by a rule of the domain; withAuth records them as authorization denials. */
-export type HandlerDenialReason = "CONFLICT_OF_INTEREST";
+export type HandlerDenialReason =
+  "CONFLICT_OF_INTEREST" | "SELF_ROLE_CHANGE" | "PROTECTED_USER" | "ROLE_NOT_ASSIGNABLE";
 
 export class PolicyDenialError extends ForbiddenError {
   public readonly reason: HandlerDenialReason;

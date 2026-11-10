@@ -217,7 +217,8 @@ describe("the decision is refused", () => {
   });
 
   it("with 403 when the reviewer created the project of the donation, and audits why", async () => {
-    const reviewer: TestIdentity = { sub: managerSub, groups: ["REVISOR", "GESTOR"] };
+    // Created the project while they were a manager; the roles cannot be combined, so today they are only a reviewer.
+    const reviewer: TestIdentity = { sub: managerSub, groups: ["REVISOR", "DONANTE"] };
     const donationId = heldDonation();
 
     const response = await decide(reviewer, donationId, { decision: "RECHAZAR", motivo: MOTIVO });
