@@ -36,6 +36,7 @@ export type AuthzDecision = { allowed: true } | { allowed: false; reason: Denial
 const ROLE_BY_ACTION: Partial<Record<AuthzAction, string>> = {
   [AUTHZ_ACTIONS.createProject]: ROLES.manager,
   [AUTHZ_ACTIONS.publishProject]: ROLES.manager,
+  [AUTHZ_ACTIONS.closeProject]: ROLES.manager,
   [AUTHZ_ACTIONS.createDonation]: ROLES.donor,
   [AUTHZ_ACTIONS.simulateDonation]: ROLES.donor,
   [AUTHZ_ACTIONS.viewMyDonations]: ROLES.donor,

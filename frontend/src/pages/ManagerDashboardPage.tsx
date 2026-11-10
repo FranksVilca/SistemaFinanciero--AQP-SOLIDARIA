@@ -2,7 +2,98 @@ import React, { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { projectsApi } from "../services/apiClient.js";
 import { useAuth } from "../auth/AuthContext.js";
-import { PlusCircle, Send, CheckCircle2, AlertTriangle, ShieldCheck, Loader2 } from "lucide-react";
+import { PlusCircle, Send, CheckCircle2, AlertTriangle, ShieldCheck, Loader2, Lock } from "lucide-react";
+
+const CLOSE_ERRORS: Record<number, string> = {
+  403: "Solo el gestor que creó el proyecto puede cerrarlo.",
+  404: "No existe un proyecto con ese identificador.",
+  409: "Solo se puede cerrar una campaña publicada y abierta.",
+};
+
+/** Closing is final and only for the manager who created the project, so it asks for a second click. */
+const CloseCampaignSection: React.FC<{ onDone: (message: string) => void }> = ({ onDone }) => {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [closeId, setCloseId] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const closeMutation = useMutation({
+    mutationFn: (id: string) => projectsApi.close(id, user?.access_token || ""),
+    onSuccess: (closed) => {
+      onDone(`La campaña "${closed.title}" se cerró: ya no recibe donaciones y sigue visible con lo recaudado.`);
+      setCloseId("");
+      setConfirming(false);
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+    onError: (err: Error & { statusCode?: number }) => {
+      setConfirming(false);
+      setError(CLOSE_ERRORS[err.statusCode ?? 0] ?? err.message ?? "No se pudo cerrar la campaña.");
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!closeId.trim()) return;
+    if (!confirming) {
+      setConfirming(true);
+      return;
+    }
+    closeMutation.mutate(closeId.trim());
+  };
+
+  return (
+    <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm md:col-span-2">
+      <h2 className="text-lg font-bold text-slate-900 mb-2 flex items-center gap-2">
+        <Lock className="w-5 h-5 text-slate-600" /> Cerrar una campaña
+      </h2>
+      <p className="text-xs text-slate-600 mb-4">
+        Una campaña publicada deja de recibir donaciones nuevas y sigue visible con lo recaudado. Las donaciones ya
+        registradas se pueden seguir confirmando. Solo la cierra el gestor que la creó, y no se puede reabrir.
+      </p>
+      {error && (
+        <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">
+          {error}
+        </p>
+      )}
+      <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 sm:items-end">
+        <div className="flex-1">
+          <label htmlFor="close-id" className="block text-xs font-semibold text-slate-700 mb-1">
+            Identificador del Proyecto (UUID)
+          </label>
+          <input
+            id="close-id"
+            type="text"
+            value={closeId}
+            onChange={(e) => {
+              setCloseId(e.target.value);
+              setConfirming(false);
+            }}
+            required
+            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={closeMutation.isPending}
+          className={`px-5 py-2.5 text-white font-semibold rounded-lg text-sm flex items-center justify-center gap-2 disabled:opacity-70 ${
+            confirming ? "bg-red-600 hover:bg-red-700" : "bg-slate-700 hover:bg-slate-800"
+          }`}
+        >
+          {closeMutation.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : confirming ? (
+            "Confirmar: cerrar definitivamente"
+          ) : (
+            "Cerrar campaña"
+          )}
+        </button>
+      </form>
+    </section>
+  );
+};
 
 export const ManagerDashboardPage: React.FC = () => {
   const { user, roles } = useAuth();
@@ -223,10 +314,17 @@ export const ManagerDashboardPage: React.FC = () => {
           </div>
 
           <div className="mt-6 pt-4 border-t border-slate-100 text-[11px] text-slate-400">
-            Todas las acciones de creación y publicación emiten eventos inmutables de auditoría
+            Todas las acciones de creación, publicación y cierre emiten eventos inmutables de auditoría
             registrados en DynamoDB y CloudTrail.
           </div>
         </section>
+
+        <CloseCampaignSection
+          onDone={(message) => {
+            setErrorMsg(null);
+            setSuccessMsg(message);
+          }}
+        />
       </div>
     </div>
   );

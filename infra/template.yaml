@@ -867,6 +867,43 @@ Resources:
               AuthorizationScopes:
                 - api/projects.write
 
+  # Closes a campaign: only the manager who created it (the owner check of withAuth). Reads the project to compare its
+  # owner, updates its status, and rereads the person's groups like any sensitive action.
+  CloseProjectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/dist/
+      Handler: projects/closeProject.handler
+      Environment:
+        Variables:
+          # The pool whose groups this function rereads (a token keeps the groups it was issued with).
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt ProjectsTable.Arn
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AuditTable.Arn
+            # Sensitive action: it rereads the person's current groups (a token keeps the ones it was issued with).
+            - Effect: Allow
+              Action: cognito-idp:AdminListGroupsForUser
+              Resource: !GetAtt CognitoUserPool.Arn
+      Events:
+        ProtectedPatch:
+          Type: HttpApi
+          Properties:
+            Path: /v1/projects/{projectId}/close
+            Method: PATCH
+            ApiId: !Ref HttpApi
+            Auth:
+              AuthorizationScopes:
+                - api/projects.write
+
   # ============================================================================
   # LAMBDA FUNCTIONS (Módulo Donations & Idempotencia)
   # ============================================================================

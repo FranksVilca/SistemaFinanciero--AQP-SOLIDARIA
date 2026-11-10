@@ -84,8 +84,8 @@ La columna *Certeza* indica cómo se sabe cada dato:
 | Mejora | Motivo | Por qué no está | Qué haría falta | Certeza |
 |---|---|---|---|---|
 | **Pasarela de pagos real** | ALCANCE | El pago es simulado a propósito; en `production` ni existe el botón de simular, así que nada confirma una donación. | Una pasarela con un webhook firmado, y no enviar a cobrar lo que esté `EN_REVISION`. | Código |
-| **Cierre de campaña** | PENDIENTE | Es una regla de dominio sin decidir (P2): hoy se puede donar mucho más que la meta y la interfaz lo oculta con un tope visual del 100 %. | Decidir si cuentan las pendientes, un estado `CERRADO` y su validación al donar. | Código |
-| **Regla «todo marcado» más fina** | PENDIENTE | Una vez que salta una regla, las demás donaciones de esa hora también se retienen (P1). Puede inundar la cola del revisor. | Decidir si solo se marca la que cruza el umbral. | Código y tests |
+| **Cierre de campaña** | **HECHO** (D19) | Cierre manual por el gestor que creó el proyecto, estado `CERRADO`. Llegar a la meta no cierra y se muestra el porcentaje real. | Cierre por fecha límite: un campo nuevo, su validación y el job diario. | Código y tests |
+| **Regla «todo marcado» más fina** | INNECESARIO (decisión, D20) | Retener solo la donación que cruza el umbral dejaría pasar las siguientes y debilitaría el control; con pocos usuarios no satura la cola del revisor. | Solo si el volumen real satura la cola. | Código y tests |
 | **Detección del fraccionamiento en días o semanas** | ALCANCE | Las ventanas son fijas por minuto y hora. Pasar a ventanas deslizantes complica la transacción para poco beneficio. | Contadores diarios o semanales y una nueva regla. | Repo |
 | **Misma persona con varias cuentas, KYC y reporte a la UIF** | ALCANCE | Los controles son por cuenta (`sub`). El reporte a la UIF-Perú está declarado fuera del alcance. | Verificación de identidad y vincular cuentas. | Repo |
 | **Revisión automática con aprendizaje automático** | ALCANCE | Las reglas son sencillas y explicables, que es lo que se evalúa; la revisión humana cubre lo dudoso. | Un modelo y datos reales para entrenarlo. | Deducción |
@@ -114,7 +114,7 @@ Varios de los puntos anteriores **no son hallazgos de hoy**: el proyecto ya los 
 | **Alarmas de CloudWatch y SNS** | [analisis-velocity-y-mejoras-pendientes.md](analisis-velocity-y-mejoras-pendientes.md), secciones 2.3 y 3.1 y fila 8 de su plan. | En la plantilla (D17), sin activar. |
 | **Rol administrador dentro de la aplicación, y que no se conceda poder a sí mismo** | `specs/002-zta-hardening/followups.md` («Alta de roles») y la tarea T106 de `tasks.md`. | **Resuelto en parte**: el rol ADMIN y el script de operación existen (D2 a D4). **Falta** el flujo para que una persona *solicite* el rol de gestor, que era la otra mitad de T106. |
 | **Revisión de las donaciones retenidas** (`EN_REVISION` sin salida) | `docs/threat-model.md` (límite declarado) y el análisis de velocity, sección 4.5. | **Resuelto** con el flujo de revisión. |
-| **Cierre de campaña** | Análisis de velocity, sección 5. | Pendiente (P2). |
+| **Cierre de campaña** | Análisis de velocity, sección 5. | **Resuelto** (D19). |
 | **Exclusiones por costo: WAF, GuardDuty, SMS para MFA** | La tabla de riesgos de `specs/001/plan.md` («Accidental Billing in AWS Free Plan»), que ya las listaba como servicios que no se deben usar. | **Decisión original, vigente.** |
 | **Postura del dispositivo** (Verified Access, Cognito Plus) | `specs/002-zta-hardening/followups.md`. | Límite declarado. |
 | **Revocación en acciones no sensibles** (un token robado sirve hasta 15 minutos) | `specs/002-zta-hardening/followups.md` («Decisiones abiertas»). | Límite declarado (A7 de las decisiones). |

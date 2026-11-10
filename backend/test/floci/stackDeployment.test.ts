@@ -17,8 +17,8 @@ import { countOf, deleteStack, deployStack, physicalIdOf, productionEquivalentTe
 // Thirteen API functions (one route each: nine of the platform, two of the review and two of the administration of
 // roles), the Cognito trigger that makes whoever registers a donor and the scheduled job that expires the reviews
 // nobody resolved.
-const FUNCTIONS_IN_ACADEMIC = 15;
-const ROUTES_IN_ACADEMIC = 13;
+const FUNCTIONS_IN_ACADEMIC = 16;
+const ROUTES_IN_ACADEMIC = 14;
 const LOG_RETENTION_DAYS = 14;
 
 const config = {

@@ -68,6 +68,9 @@ async function assertProjectAcceptsDonationFrom(projectId: string, donorSub: str
   if (project.createdBy === donorSub) {
     throw new PolicyDenialError("CONFLICT_OF_INTEREST", "Acceso denegado: no puede donar a un proyecto que usted creó");
   }
+  if (project.status === PROJECT_STATUS.closed) {
+    throw new ConflictError("La campaña está cerrada y ya no acepta donaciones");
+  }
   if (project.status !== PROJECT_STATUS.published) {
     throw new ConflictError("El proyecto no está disponible para donaciones (no PUBLICADO)");
   }

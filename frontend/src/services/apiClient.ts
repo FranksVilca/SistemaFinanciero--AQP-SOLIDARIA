@@ -67,6 +67,11 @@ export const projectsApi = {
       method: "PATCH",
       token,
     }),
+  close: (id: string, token: string) =>
+    apiFetch<Project>(`/projects/${id}/close`, {
+      method: "PATCH",
+      token,
+    }),
 };
 
 export const donationsApi = {

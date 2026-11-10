@@ -23,6 +23,8 @@ const MATRIX: Record<string, Partial<Record<Table, string[]>>> = {
   "projects/getProjectStats.handler": { ProjectsTable: READ },
   "projects/createProject.handler": { ProjectsTable: PUT, AuditTable: PUT },
   "projects/publishProject.handler": { ProjectsTable: UPDATE, AuditTable: PUT },
+  // Reads the project to compare its owner, then updates its status.
+  "projects/closeProject.handler": { ProjectsTable: [...READ, ...UPDATE], AuditTable: PUT },
   "donations/createDonation.handler": {
     ProjectsTable: READ,
     DonationsTable: [...PUT, ...READ],

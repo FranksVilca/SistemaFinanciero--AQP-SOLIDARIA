@@ -11,6 +11,7 @@ Acciones de DynamoDB permitidas. Todo lo no listado está denegado. Sin comodine
 | GetProjectStats | R | | | |
 | CreateProject | P | | | P |
 | PublishProject | U | | | P |
+| CloseProject | R (`GetItem`, creador del proyecto), U | | | P |
 | CreateDonation | R | P, R | P, R, U (solo contadores de velocidad `velocity#`, impuesto por `dynamodb:LeadingKeys` con `ForAllValues:StringLike` `velocity#*`) | P |
 | SimulateDonation (solo etapa académica) | U | R, U | | P |
 | GetMyDonations | | R (incluye índice `donorSub-createdAt-index`) | | P (solo denegaciones) |
@@ -24,7 +25,7 @@ Acciones de DynamoDB permitidas. Todo lo no listado está denegado. Sin comodine
 
 ## Cognito
 
-Una sola acción, `cognito-idp:AdminListGroupsForUser`, sobre el pool de usuarios del stack, solo para `PublishProject`, `SimulateDonation`, `GetAuditEvents`, `ReviewDonation`, `ListUsers` y `ChangeUserRole` (las acciones sensibles releen los grupos de la persona, porque un token conserva los de cuando se emitió). `AddDonorToGroup` tiene una sola, `cognito-idp:AdminAddUserToGroup`, sobre el mismo pool, en una política `AWS::IAM::Policy` aparte (el pool la nombra como disparador, así que una política en línea que nombrara al pool formaría un ciclo). Las dos funciones de administración añaden, sobre el mismo pool y nada más: `ListUsers` (`cognito-idp:ListUsers`) y `ChangeUserRole` (`AdminGetUser`, `AdminAddUserToGroup`, `AdminRemoveUserFromGroup`); ninguna puede crear, borrar, deshabilitar ni autenticar usuarios, ni tocar las demás tablas. Cognito no permite limitar esas acciones por grupo en IAM, así que qué roles pueden asignarse lo impone el código (`test/admin/changeUserRole.test.ts`). Ninguna otra función tiene permisos de `cognito-idp`. Lo verifica `backend/test/infra/identityTrigger.test.ts`. Lo verifica `backend/test/infra/roleRevalidation.test.ts` y, con IAM activo, `backend/test/floci/roleRevalidation.test.ts`.
+Una sola acción, `cognito-idp:AdminListGroupsForUser`, sobre el pool de usuarios del stack, solo para `PublishProject`, `CloseProject`, `SimulateDonation`, `GetAuditEvents`, `ReviewDonation`, `ListUsers` y `ChangeUserRole` (las acciones sensibles releen los grupos de la persona, porque un token conserva los de cuando se emitió). `AddDonorToGroup` tiene una sola, `cognito-idp:AdminAddUserToGroup`, sobre el mismo pool, en una política `AWS::IAM::Policy` aparte (el pool la nombra como disparador, así que una política en línea que nombrara al pool formaría un ciclo). Las dos funciones de administración añaden, sobre el mismo pool y nada más: `ListUsers` (`cognito-idp:ListUsers`) y `ChangeUserRole` (`AdminGetUser`, `AdminAddUserToGroup`, `AdminRemoveUserFromGroup`); ninguna puede crear, borrar, deshabilitar ni autenticar usuarios, ni tocar las demás tablas. Cognito no permite limitar esas acciones por grupo en IAM, así que qué roles pueden asignarse lo impone el código (`test/admin/changeUserRole.test.ts`). Ninguna otra función tiene permisos de `cognito-idp`. Lo verifica `backend/test/infra/identityTrigger.test.ts`. Lo verifica `backend/test/infra/roleRevalidation.test.ts` y, con IAM activo, `backend/test/floci/roleRevalidation.test.ts`.
 
 ## Reglas verificadas por prueba
 

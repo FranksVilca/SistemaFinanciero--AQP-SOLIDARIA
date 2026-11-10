@@ -65,7 +65,7 @@ Toda función de API se exporta con `withAuth()`; una prueba falla si una ruta d
 3. **Sesión y grupos, solo en acciones sensibles:** llama a `userInfo` de Cognito y relee los grupos actuales (`AdminListGroupsForUser`). Falla cerrado.
 4. Ejecuta la lógica, **audita** y traduce cualquier error a una respuesta sin filtrar detalles internos.
 
-Rutas y funciones (15 en `academic`: 13 de API, el trigger y el job; 14 en `production`):
+Rutas y funciones (16 en `academic`: 14 de API, el trigger y el job; 15 en `production`):
 
 | Función | Ruta | Scope | Rol | Sensible | Tablas que toca |
 |---|---|---|---|:-:|---|
@@ -74,6 +74,7 @@ Rutas y funciones (15 en `academic`: 13 de API, el trigger y el job; 14 en `prod
 | GetProjectStats | `GET /v1/projects/{id}/stats` | pública | | | projects (lee) |
 | CreateProject | `POST /v1/projects` | `projects.write` | GESTOR | | projects, audit |
 | PublishProject | `PATCH /v1/projects/{id}/publish` | `projects.write` | GESTOR | sí | projects, audit |
+| CloseProject | `PATCH /v1/projects/{id}/close` | `projects.write` | GESTOR (el que lo creó) | sí | projects (lee y actualiza), audit |
 | CreateDonation | `POST /v1/donations` | `donations.write` | DONANTE | | projects (lee), donations, idempotency, audit |
 | SimulateDonation | `POST /v1/donations/{id}/simulate` | `donations.write` | DONANTE (dueño) | al confirmar | projects, donations, audit — solo `academic` |
 | GetMyDonations | `GET /v1/donations/me` | `donations.read` | DONANTE | | donations (lee), audit |
@@ -214,7 +215,7 @@ Aquí se aclara **qué servicio se dejó fuera o apagado y por qué**, para que 
 
 ### 9.3 Que no existen por alcance, no por costo
 - **Pasarela de pagos:** la confirmación es simulada y solo existe en `academic`.
-- **Cierre de campaña:** `CreateDonation` no compara con la meta del proyecto.
+- **Cierre automático de campaña (por meta o por fecha):** no existe a propósito. El cierre es manual, por el gestor que creó el proyecto (D19); llegar a la meta no cierra nada y la interfaz muestra el porcentaje real.
 - **Gestión de cuentas:** no hay pantalla para crear, borrar o deshabilitar usuarios; el alta es por registro abierto. Sí existe la administración de **roles** (rol ADMIN y `npm run role`). Lo que falta es el flujo para que una persona **solicite** el rol de gestor (la otra mitad de T106).
 
 ### 9.4 Lo que el proyecto exige desde el principio y la cuenta real no tiene
@@ -243,4 +244,4 @@ d2 --pad 30 zta-architecture-current.d2 zta-architecture-current.svg
 d2 --pad 30 zta-architecture-current.d2 zta-architecture-current.png
 ```
 
-Las cifras de la sección 3.4 (15 funciones, 13 rutas) las fijan `backend/test/infra/iamMatrix.test.ts` y `backend/test/floci/stackDeployment.test.ts`: si cambian, esos tests fallan antes que este documento quede desactualizado.
+Las cifras de la sección 3.4 (16 funciones, 14 rutas) las fijan `backend/test/infra/iamMatrix.test.ts` y `backend/test/floci/stackDeployment.test.ts`: si cambian, esos tests fallan antes que este documento quede desactualizado.

@@ -23,7 +23,12 @@ export const DONATION_STATUS = {
 export const PROJECT_STATUS = {
   draft: "BORRADOR",
   published: "PUBLICADO",
+  /** Closed by the manager who created it: it stays visible with what it raised but takes no new donation. */
+  closed: "CERRADO",
 } as const;
+
+/** What a visitor may see: a draft is not shown to anyone, a closed campaign stays visible with what it raised. */
+export const VISIBLE_PROJECT_STATUSES: readonly string[] = [PROJECT_STATUS.published, PROJECT_STATUS.closed];
 
 export const CURRENCY = "PEN";
 
@@ -43,6 +48,7 @@ export const AUTHZ_ACTIONS = {
   viewProjectStats: "ViewProjectStats",
   createProject: "CreateProject",
   publishProject: "PublishProject",
+  closeProject: "CloseProject",
   createDonation: "CreateDonation",
   simulateDonation: "SimulateDonation",
   viewMyDonations: "ViewMyDonations",
@@ -82,6 +88,7 @@ export const PUBLIC_ACTIONS: readonly AuthzAction[] = [
 export const STATE_CHANGING_ACTIONS: readonly AuthzAction[] = [
   AUTHZ_ACTIONS.createProject,
   AUTHZ_ACTIONS.publishProject,
+  AUTHZ_ACTIONS.closeProject,
   AUTHZ_ACTIONS.createDonation,
   AUTHZ_ACTIONS.simulateDonation,
   AUTHZ_ACTIONS.reviewDonation,
@@ -91,6 +98,7 @@ export const STATE_CHANGING_ACTIONS: readonly AuthzAction[] = [
 /** Actions whose session must be revalidated against the identity provider. */
 export const SENSITIVE_ACTIONS: readonly AuthzAction[] = [
   AUTHZ_ACTIONS.publishProject,
+  AUTHZ_ACTIONS.closeProject,
   AUTHZ_ACTIONS.viewAudit,
   AUTHZ_ACTIONS.reviewDonation,
   // Whoever manages roles sees the emails of the pool and changes who may do what: the role is read again every time.
@@ -102,6 +110,7 @@ export const AUDIT_EVENT_TYPES = {
   authorizationDecision: "AUTHZ_DECISION",
   projectCreated: "PROJECT_CREATED",
   projectPublished: "PROJECT_PUBLISHED",
+  projectClosed: "PROJECT_CLOSED",
   donationCreated: "DONATION_CREATED",
   donationTransitioned: "DONATION_TRANSITIONED",
   roleAssigned: "ROLE_ASSIGNED",
@@ -119,6 +128,7 @@ export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[keyof typeof AUDIT_EVENT
 export const AUDIT_EVENT_TYPE_BY_ACTION: Partial<Record<AuthzAction, AuditEventType>> = {
   [AUTHZ_ACTIONS.createProject]: AUDIT_EVENT_TYPES.projectCreated,
   [AUTHZ_ACTIONS.publishProject]: AUDIT_EVENT_TYPES.projectPublished,
+  [AUTHZ_ACTIONS.closeProject]: AUDIT_EVENT_TYPES.projectClosed,
   [AUTHZ_ACTIONS.createDonation]: AUDIT_EVENT_TYPES.donationCreated,
   [AUTHZ_ACTIONS.simulateDonation]: AUDIT_EVENT_TYPES.donationTransitioned,
 };

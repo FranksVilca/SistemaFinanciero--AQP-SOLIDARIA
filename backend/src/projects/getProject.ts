@@ -1,5 +1,5 @@
 import { withAuth } from "../authz/withAuth.js";
-import { AUTHZ_ACTIONS, PROJECT_STATUS } from "../shared/constants.js";
+import { AUTHZ_ACTIONS, VISIBLE_PROJECT_STATUSES } from "../shared/constants.js";
 import { docClient, GetCommand, TABLE_NAMES } from "../shared/dynamo.js";
 import { NotFoundError } from "../shared/errors.js";
 import { toPublicProject } from "../shared/projectView.js";
@@ -13,8 +13,8 @@ export const handler = withAuth(
       new GetCommand({ TableName: TABLE_NAMES.projects, Key: { projectId } })
     );
 
-    // A draft answers like a missing project so visitors cannot learn that it exists.
-    if (!project || project.status !== PROJECT_STATUS.published) {
+    // A draft answers like a missing project so visitors cannot learn that it exists. A closed one stays visible.
+    if (!project || !VISIBLE_PROJECT_STATUSES.includes(project.status)) {
       throw new NotFoundError("Proyecto no encontrado o no disponible");
     }
     return buildSuccessResponse(toPublicProject(project));

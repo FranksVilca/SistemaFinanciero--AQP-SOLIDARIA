@@ -140,7 +140,7 @@ Formato: qué se decidió, por qué, qué alternativas había y quién decidió.
 - **Mantenimiento:** el diagrama y el documento se actualizan cuando cambie la plantilla; los tests que cuentan funciones y rutas avisan si algo cambia sin documentarse.
 
 ### D12. Se documenta por separado lo que se dejó fuera por costo y lo que se dejó fuera por limitación técnica
-- **Decisión:** [arquitectura-actual.md](arquitectura-actual.md), sección 9, separa los servicios apagados por costo (Cognito Plus, GuardDuty, Security Hub, CloudTrail, PITR, claves KMS propias, VPC, Verified Permissions, SMS, Organizations) de los que no se usan por una limitación técnica (WAF y el límite por usuario, que un HTTP API no admite) y de los que faltan por alcance (pasarela de pagos, cierre de campaña).
+- **Decisión:** [arquitectura-actual.md](arquitectura-actual.md), sección 9, separa los servicios apagados por costo (Cognito Plus, GuardDuty, Security Hub, CloudTrail, PITR, claves KMS propias, VPC, Verified Permissions, SMS, Organizations) de los que no se usan por una limitación técnica (WAF y el límite por usuario, que un HTTP API no admite) y de los que faltan por alcance (pasarela de pagos; el cierre de campaña ya existe, D19).
 - **Por qué:** quien evalúe el proyecto no debe leer un servicio ausente como un olvido, y tampoco confundir «no se puede» con «no se quiso pagar».
 - **Cómo se sabe cada dato:** cada fila marca si se comprobó en la documentación de AWS, en la cuenta real o solo está afirmado en el repositorio. Los precios no se citan.
 
@@ -184,14 +184,28 @@ Formato: qué se decidió, por qué, qué alternativas había y quién decidió.
 - **Efecto:** no cambia datos ni comportamiento; solo activa la copia continua. No cubre la tabla de idempotencia (datos con TTL de 24 horas).
 - **Para desactivarlo:** `EnablePitr=false`.
 
+### D19. Cierre de campaña: manual, solo por el gestor que creó el proyecto
+- **Decisión:** nuevo estado `CERRADO` y la acción `CloseProject` (`PATCH /v1/projects/{id}/close`). Solo el GESTOR que creó el proyecto la ejecuta (comprobación de dueño de `withAuth`: otro gestor recibe 403 y queda auditado como `OWNER`), es una acción sensible (revalida sesión y rol contra Cognito) y deja el evento `PROJECT_CLOSED`. Pantalla: «Cerrar una campaña» en el panel del gestor, con confirmación en dos clics.
+- **Qué hace una campaña cerrada:** no admite donaciones nuevas (409 «La campaña está cerrada…»); sigue visible en el catálogo y por id, con lo recaudado y la marca «Campaña cerrada»; **las donaciones ya registradas** (pendientes o en revisión) **se pueden seguir confirmando o revisando**, porque ese dinero ya está en camino. No se puede reabrir.
+- **Llegar a la meta no cierra nada** (decisión de James): se puede seguir donando y la interfaz muestra el porcentaje real, por ejemplo 120 %, con «Meta superada». Antes se ocultaba con un tope del 100 %; `GET …/stats` tampoco lo limita ya, y añade `status`.
+- **Alternativas descartadas:** cierre automático al llegar a la meta (impide recaudar más de lo pedido); cierre por fecha límite (exige un campo nuevo, su validación y más pruebas; se puede añadir después con el job diario que ya existe).
+- **Límite conocido:** una donación que se está registrando justo en el instante del cierre puede entrar, porque el proyecto se lee antes de escribir la donación (la misma ventana que ya tenía la comprobación de `PUBLICADO`). Cerrarla exigiría una condición en la transacción y el permiso `dynamodb:ConditionCheckItem`.
+- **Cierra:** P2.
+
+### D20. La regla «una vez marcado, todo marcado» se mantiene
+- **Decisión:** si el total de un donante en una hora supera el umbral (o hace el número de donaciones casi máximas), **todas** las donaciones siguientes de esa hora quedan retenidas, aunque sean pequeñas.
+- **Por qué:** retener solo la que cruza el umbral debilita el control: después de la primera retención, alguien podría seguir donando montos grandes sin «cruzar» el umbral otra vez. Con pocos usuarios no inunda la cola del revisor, y fallar hacia la retención es lo más seguro.
+- **Cuándo revisarlo:** si el volumen real hace que la cola del revisor se sature. El job de vencimiento resuelve como máximo 100 por corrida.
+- **Decide:** James aceptó la recomendación. Cierra P1.
+
 ---
 
 ## Parte C. Decisiones pendientes
 
 | # | Tema | Pregunta | Recomendación actual |
 |---|---|---|---|
-| P1 | Regla «una vez marcado, todo marcado» | ¿Se mantiene, o solo se marca la donación que cruza el umbral? Hoy puede inundar la cola del revisor. | Decidirlo según el volumen esperado; el job de vencimiento resuelve como máximo 100 por corrida. |
-| P2 | Cierre de campaña | `createDonation` no compara con la meta del proyecto; la interfaz oculta el exceso con `Math.min(100, …)`. | Cierre automático contando solo lo confirmado, o documentar que la meta es solo informativa. |
+| P1 | ~~Regla «una vez marcado, todo marcado»~~ | **Resuelto** en D20 (se mantiene). | — |
+| P2 | ~~Cierre de campaña~~ | **Resuelto** en D19 (cierre manual por el gestor que creó el proyecto; la meta no cierra). | — |
 | P3 | Cuenta root de AWS | Se opera con la cuenta root (`746727375048`). | Un usuario con IAM Identity Center o un rol acotado; root guardada con MFA. |
 | P4 | Inicio de sesión silencioso | ¿Evitar el clic tras recargar sin persistir tokens? | Probarlo contra el stack antes de decidir (ver D6). |
 | P5 | Índice `status-createdAt-index` | Indexa todas las donaciones con proyección `ALL`. | Convertirlo en índice disperso si el volumen crece. |

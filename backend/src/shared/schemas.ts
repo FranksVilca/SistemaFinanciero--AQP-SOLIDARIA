@@ -3,7 +3,7 @@ import { DONATION_MAX_CENTS, REVIEW_MOTIVO_MAX_LENGTH, REVIEW_MOTIVO_MIN_LENGTH,
 
 export const CurrencySchema = z.literal("PEN");
 
-export const ProjectStatusSchema = z.enum(["BORRADOR", "PUBLICADO"]);
+export const ProjectStatusSchema = z.enum(["BORRADOR", "PUBLICADO", "CERRADO"]);
 
 export const DonationStatusSchema = z.enum([
   "PENDIENTE_SIMULACION",

@@ -16,6 +16,7 @@ import {
  */
 const SENSITIVE_HANDLERS = [
   "projects/publishProject.handler",
+  "projects/closeProject.handler",
   "audit/getAuditEvents.handler",
   "donations/simulateDonation.handler",
   "reviews/reviewDonation.handler",

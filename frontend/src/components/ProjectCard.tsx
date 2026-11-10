@@ -8,10 +8,9 @@ interface ProjectCardProps {
 }
 
 export const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
-  const percentage = Math.min(
-    100,
-    Math.round((project.confirmedAmountCents / project.goalAmountCents) * 100)
-  );
+  // The figure is the real one (a campaign can raise more than its goal); only the bar stops at its end.
+  const percentage = Math.round((project.confirmedAmountCents / project.goalAmountCents) * 100);
+  const isClosed = project.status === "CERRADO";
 
   return (
     <article className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col justify-between">
@@ -19,6 +18,11 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
         <div className="flex items-center gap-2 text-indigo-600 mb-3">
           <HeartHandshake className="w-5 h-5" aria-hidden="true" />
           <span className="text-xs font-semibold uppercase tracking-wider">Causa Social</span>
+          {isClosed && (
+            <span className="ml-auto text-xs font-bold px-2.5 py-1 rounded-full border bg-slate-100 text-slate-700 border-slate-300">
+              Campaña cerrada
+            </span>
+          )}
         </div>
         <h3 className="text-xl font-bold text-slate-900 mb-2">{project.title}</h3>
         <p className="text-slate-600 text-sm line-clamp-3 mb-6">{project.description}</p>
@@ -34,12 +38,12 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
             role="progressbar"
             aria-valuenow={percentage}
             aria-valuemin={0}
-            aria-valuemax={100}
+            aria-valuemax={Math.max(100, percentage)}
             aria-label={`Progreso de ${project.title}`}
           >
             <div
               className="bg-indigo-600 h-2.5 rounded-full transition-all duration-500"
-              style={{ width: `${percentage}%` }}
+              style={{ width: `${Math.min(100, percentage)}%` }}
             />
           </div>
           <div className="text-right text-xs text-slate-500">
@@ -53,7 +57,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
           to={`/projects/${project.projectId}`}
           className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-700 focus:outline-none focus:underline"
         >
-          Ver detalle y donar <ArrowRight className="w-4 h-4" aria-hidden="true" />
+          {isClosed ? "Ver resultado" : "Ver detalle y donar"} <ArrowRight className="w-4 h-4" aria-hidden="true" />
         </Link>
       </div>
     </article>

@@ -23,10 +23,8 @@ const ProjectNotAvailable: React.FC = () => (
 );
 
 const ProjectProgress: React.FC<{ project: Project }> = ({ project }) => {
-  const percentage = Math.min(
-    100,
-    Math.round((project.confirmedAmountCents / project.goalAmountCents) * 100)
-  );
+  // The figure is the real one (a campaign can raise more than its goal); only the bar stops at its end.
+  const percentage = Math.round((project.confirmedAmountCents / project.goalAmountCents) * 100);
 
   return (
     <div className="bg-slate-50 rounded-xl p-6 border border-slate-100 mb-8">
@@ -42,17 +40,27 @@ const ProjectProgress: React.FC<{ project: Project }> = ({ project }) => {
         role="progressbar"
         aria-valuenow={percentage}
         aria-valuemin={0}
-        aria-valuemax={100}
+        aria-valuemax={Math.max(100, percentage)}
         aria-label="Progreso de recaudación"
       >
         <div
           className="bg-indigo-600 h-3 rounded-full transition-all duration-500"
-          style={{ width: `${percentage}%` }}
+          style={{ width: `${Math.min(100, percentage)}%` }}
         />
       </div>
+      {percentage > 100 && (
+        <p className="text-sm font-medium text-emerald-700">Meta superada: se recaudó más de lo que se pedía.</p>
+      )}
     </div>
   );
 };
+
+/** A closed campaign takes no new donation: the page says so instead of offering an action the API refuses. */
+const ClosedNotice: React.FC = () => (
+  <p role="note" className="text-sm font-medium text-slate-700 bg-slate-100 border border-slate-300 rounded-lg px-4 py-3">
+    Esta campaña está cerrada y ya no recibe donaciones. ¡Gracias a quienes participaron!
+  </p>
+);
 
 /** Only donors donate: someone signed in with another role is told so instead of being offered an action the API refuses. */
 const DonationAction: React.FC<{ onDonate: () => void }> = ({ onDonate }) => {
@@ -124,7 +132,11 @@ export const ProjectDetailPage: React.FC = () => {
           <p className="text-xs text-slate-500">
             * Las donaciones registradas son simulaciones académicas protegidas con Zero Trust.
           </p>
-          <DonationAction onDonate={() => setIsDonationModalOpen(true)} />
+          {project.status === "CERRADO" ? (
+            <ClosedNotice />
+          ) : (
+            <DonationAction onDonate={() => setIsDonationModalOpen(true)} />
+          )}
         </div>
       </div>
 

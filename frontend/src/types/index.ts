@@ -5,7 +5,8 @@ export interface Project {
   goalAmountCents: number;
   confirmedAmountCents: number;
   currency: "PEN";
-  status: "BORRADOR" | "PUBLICADO";
+  /** CERRADO: closed by the manager who created it; it stays visible with what it raised but takes no new donation. */
+  status: "BORRADOR" | "PUBLICADO" | "CERRADO";
   createdAt: string;
   updatedAt: string;
 }

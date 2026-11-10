@@ -18,7 +18,7 @@ paths:
   /projects:
     get:
       summary: Listar proyectos publicados
-      description: Retorna la lista de proyectos con estado PUBLICADO. Los borradores son excluidos.
+      description: Retorna los proyectos PUBLICADOS y los CERRADOS (con lo recaudado). Los borradores son excluidos.
       operationId: listProjects
       responses:
         '200':
@@ -59,7 +59,7 @@ paths:
   /projects/{projectId}:
     get:
       summary: Consultar detalle de proyecto
-      description: Retorna información de un proyecto PUBLICADO. Si no existe o es BORRADOR, responde 404 para no filtrar existencia a visitantes.
+      description: Retorna información de un proyecto PUBLICADO o CERRADO. Si no existe o es BORRADOR, responde 404 para no filtrar existencia a visitantes.
       operationId: getProject
       parameters:
         - name: projectId
@@ -130,6 +130,45 @@ paths:
           $ref: '#/components/responses/404NotFound'
         '409':
           description: Conflicto (proyecto ya publicado o estado inválido)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /projects/{projectId}/close:
+    patch:
+      summary: Cerrar campaña (solo el GESTOR que creó el proyecto)
+      description: >-
+        Transiciona el proyecto de PUBLICADO a CERRADO. Una campaña cerrada deja de aceptar donaciones nuevas (409 en
+        POST /donations) y sigue visible con lo recaudado; las donaciones ya registradas se pueden seguir confirmando.
+        No se puede reabrir. Acción sensible: se revalida la sesión y el rol contra Cognito. Un GESTOR que no creó el
+        proyecto recibe 403.
+      operationId: closeProject
+      security:
+        - CognitoJWT:
+            - api/projects.write
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Campaña cerrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '409':
+          description: El proyecto no está PUBLICADO (borrador o ya cerrado)
           content:
             application/json:
               schema:
@@ -582,7 +621,7 @@ components:
           enum: [PEN]
         status:
           type: string
-          enum: [BORRADOR, PUBLICADO]
+          enum: [BORRADOR, PUBLICADO, CERRADO]
         createdAt:
           type: string
           format: date-time
@@ -611,6 +650,10 @@ components:
           enum: [PEN]
         progressPercentage:
           type: number
+          description: Porcentaje real confirmado sobre la meta; no se limita a 100 (una campaña puede superar su meta).
+        status:
+          type: string
+          enum: [PUBLICADO, CERRADO]
 
     CreateProjectRequest:
       type: object
