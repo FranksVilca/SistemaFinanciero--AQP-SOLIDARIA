@@ -1,11 +1,12 @@
 import { execSync } from "node:child_process";
+import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DEMO_PASSWORD, bootLocalStack, type LocalStack } from "../floci/helpers/localStack.js";
 import { signInSettings } from "../floci/helpers/gateway.js";
-import { hostedSignIn } from "../floci/helpers/cognitoUsers.js";
+import { createUserInGroup, hostedSignIn } from "../floci/helpers/cognitoUsers.js";
 import { deleteStack } from "../floci/helpers/stack.js";
 import {
   emulatorContentSecurityPolicy,
@@ -144,6 +145,70 @@ describe.each(SITES)("SPA served as: %s", (kind) => {
     await context.close();
   });
 
+  it("supports the donation journey at 375px with modal focus, Escape and cent amounts", async () => {
+    const { context, page, watched } = await newPage();
+    try {
+      // The two serving modes share a stack. Keep this test's donation out of the demo donor's minute quota.
+      const email = `qa-mobile-${kind.replace(/ /g, "-")}@aqpsolidaria.pe`;
+      await createUserInGroup(stack.pool, email, "DONANTE");
+      await signIn(page, email);
+      await page.setViewportSize({ width: 375, height: 812 });
+      const capture = async (name: string) => {
+        const directory = resolve(REPOSITORY_ROOT, ".local/qa", kind.replace(/ /g, "-"));
+        await mkdir(directory, { recursive: true });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await page.screenshot({ path: resolve(directory, `${name}.png`), fullPage: true });
+      };
+      await capture("catalog-375");
+      await page
+        .getByRole("link", { name: /Ver detalle y donar/ })
+        .first()
+        .click();
+      const opener = page.getByRole("button", { name: /Registrar intención de donación/ });
+      await opener.waitFor();
+      await capture("detail-375");
+      await opener.focus();
+      await page.keyboard.press("Enter");
+      const dialog = page.getByRole("dialog");
+      await dialog.waitFor();
+      await expect.poll(() => dialog.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+      for (const key of ["Tab", "Shift+Tab"]) {
+        for (let index = 0; index < 8; index++) {
+          await page.keyboard.press(key);
+          expect(await dialog.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+        }
+      }
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "detached" });
+      expect(await opener.evaluate((node) => node === document.activeElement)).toBe(true);
+      await page.keyboard.press("Enter");
+      await page.getByLabel("Monto en Soles (PEN)").fill("1.01");
+      await capture("donation-375");
+      await page.getByRole("button", { name: "Confirmar Intención" }).focus();
+      await page.keyboard.press("Enter");
+      await page.getByRole("heading", { name: "¡Intención Registrada!" }).waitFor();
+      expect(await dialog.getAttribute("aria-labelledby")).toBe("donation-modal-title");
+      expect(await page.locator("#donation-modal-title").innerText()).toBe("¡Intención Registrada!");
+      await capture("confirmation-375");
+      await page.getByRole("button", { name: "Aceptar" }).focus();
+      await page.keyboard.press("Enter");
+      expect(await opener.evaluate((node) => node === document.activeElement)).toBe(true);
+      const historyLink = page.getByRole("link", { name: "Mis Donaciones" });
+      await historyLink.waitFor();
+      await historyLink.focus();
+      await page.keyboard.press("Enter");
+      const simulate = page.getByRole("button", { name: "Simular Aprobación" }).first();
+      await simulate.waitFor();
+      await simulate.focus();
+      await page.keyboard.press("Enter");
+      await page.getByText("CONFIRMADA_SIMULADA", { exact: true }).waitFor();
+      await capture("simulation-375");
+      expect(watched.consoleErrors).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("signs a donor in with PKCE, keeps the tokens out of web storage, donates, approves and signs out revoking the token", async () => {
     const { context, page, watched } = await newPage();
     const revocations: Array<{ url: string; status: number }> = [];
@@ -186,14 +251,14 @@ describe.each(SITES)("SPA served as: %s", (kind) => {
   it("shows a new donation in the history that was opened before, and the approved amount in the catalog", async () => {
     const { context, page, watched } = await newPage();
     const donationCount = async (): Promise<number> => page.getByText(/^ID: /).count();
-    const raisedByFirstProject = async (): Promise<number> => {
+    const raisedCentsByFirstProject = async (): Promise<number> => {
       await page.getByRole("link", { name: "Proyectos" }).first().click();
       await page
         .getByRole("link", { name: /Ver detalle y donar/ })
         .first()
         .waitFor();
       const raised = (await bodyText(page)).match(/Recaudado: S\/\s*([\d,.]+)/)?.[1] ?? "";
-      return Number(raised.replace(/,/g, ""));
+      return Math.round(Number(raised.replace(/,/g, "")) * 100);
     };
     await signIn(page, "donante@aqpsolidaria.pe");
 
@@ -203,7 +268,7 @@ describe.each(SITES)("SPA served as: %s", (kind) => {
     // The list is loaded when the loading indicator is gone: counting earlier would read an empty list.
     await page.getByRole("status").waitFor({ state: "detached" });
     const donationsBefore = await donationCount();
-    const raisedBefore = await raisedByFirstProject();
+    const raisedBeforeCents = await raisedCentsByFirstProject();
 
     await page
       .getByRole("link", { name: /Ver detalle y donar/ })
@@ -225,7 +290,7 @@ describe.each(SITES)("SPA served as: %s", (kind) => {
     await page.getByText("CONFIRMADA_SIMULADA").first().waitFor();
 
     // The catalog had the old amount cached: it must show the approved donation without a reload.
-    await expect.poll(raisedByFirstProject, { timeout: 15_000 }).toBe(raisedBefore + 50);
+    await expect.poll(raisedCentsByFirstProject, { timeout: 15_000 }).toBe(raisedBeforeCents + 5_000);
     expect(watched.consoleErrors).toEqual([]);
     await context.close();
   });
