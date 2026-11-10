@@ -18,6 +18,8 @@ skip-check:
   - CKV_AWS_119 # DynamoDB tables.
   - CKV_AWS_158 # CloudWatch log groups.
   - CKV_AWS_35 # CloudTrail log files.
+  # SNS
+  - CKV_AWS_26 # The alarm topic is not encrypted: CloudWatch alarms cannot publish to a topic encrypted with the AWS managed key, and a customer managed key costs USD 1 a month. It carries only alarm names.
   # CloudTrail
   - CKV_AWS_67 # The deployment is single-region by design (constitution, principle V).
   # DynamoDB
