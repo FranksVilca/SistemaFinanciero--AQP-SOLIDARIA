@@ -51,6 +51,18 @@ Parameters:
     Description: >
       Activa Security Hub sin estándares por defecto. Verificar en la consola de la cuenta si aplica una prueba
       de 30 días antes de activarlo; después puede cobrarse.
+  AlertEmail:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^[^@\s]+@[^@\s]+\.[^@\s]+$'
+    Description: >
+      Correo que recibe las alertas de gasto de AWS Budgets. Vacío = no se crea el presupuesto. El CI lo toma de la
+      variable de repositorio ALERT_EMAIL; no se escribe en el repositorio.
+  MonthlyBudgetUsd:
+    Type: Number
+    Default: 5
+    MinValue: 1
+    Description: Tope mensual en USD de toda la cuenta; avisa al 80% real, al 100% real y al 100% previsto.
   # Controles de velocidad de las donaciones (valores académicos de ejemplo, ver docs/threat-model.md).
   VelocityMaxPerMinute:
     Type: Number
@@ -86,6 +98,7 @@ Conditions:
   CloudTrailEnabled: !Equals [!Ref EnableCloudTrail, 'true']
   GuardDutyEnabled: !Equals [!Ref EnableGuardDuty, 'true']
   SecurityHubEnabled: !Equals [!Ref EnableSecurityHub, 'true']
+  BudgetEnabled: !Not [!Equals [!Ref AlertEmail, '']]
 
 Globals:
   Function:
@@ -319,6 +332,47 @@ Resources:
       EnableLogFileValidation: true
 
   # ============================================================================
+  # GASTO: alerta por correo de AWS Budgets (RNF-09). Una alerta por correo no tiene cargo propio. Mide toda la cuenta,
+  # no solo este stack. Solo se crea si AlertEmail no está vacío; el correo no se escribe en el repositorio.
+  # ============================================================================
+  CostBudget:
+    Type: AWS::Budgets::Budget
+    Condition: BudgetEnabled
+    Properties:
+      Budget:
+        BudgetName: !Sub "aqp-solidaria-${StageName}-monthly"
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref MonthlyBudgetUsd
+          Unit: USD
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
+
+  # ============================================================================
   # DETECCIÓN OPCIONAL con pruebas de 30 días (apagadas por defecto, ver Parameters)
   # ============================================================================
   GuardDutyDetector:
@@ -341,6 +395,10 @@ Resources:
     Type: AWS::Cognito::UserPool
     Properties:
       UserPoolName: !Sub "aqp-solidaria-users-${StageName}"
+      # Stated on purpose: it used to be the CloudFormation default and nobody chose it. Everything this project uses
+      # (classic hosted UI, TOTP, groups, scopes, triggers) also exists in LITE, which is cheaper per active user; moving
+      # there needs the token revocation, userInfo and sign-out flows tested first (docs/mejoras-consideradas.md, P6).
+      UserPoolTier: ESSENTIALS
       AutoVerifiedAttributes:
         - email
       UsernameAttributes:
@@ -443,7 +501,8 @@ Resources:
       Domain: !Ref CognitoDomainPrefix
       UserPoolId: !Ref CognitoUserPool
       # Hosted UI (classic): the branding below (CSS) applies only to it, and it is available in every Cognito feature
-      # plan. The newer managed login (version 2) needs the Essentials or Plus plan, which is not the free plan.
+      # plan. The newer managed login (version 2) would work with the plan the pool already has (Essentials), but it
+      # does not take the CSS branding below and nothing here needs it.
       ManagedLoginVersion: 1
 
   # Brand of the Cognito hosted sign-in page (classic hosted UI), in the colours of the SPA. Cognito accepts only a

@@ -468,6 +468,14 @@ Resources:
             Effect: Allow
             Action: cloudtrail:DescribeTrails
             Resource: "*"
+          # The monthly spend alert (CostBudget). Budgets has no separate create action: ModifyBudget creates, changes and
+          # deletes the budget and its notifications.
+          - Sid: SpendBudget
+            Effect: Allow
+            Action:
+              - budgets:ViewBudget
+              - budgets:ModifyBudget
+            Resource: !Sub "arn:${AWS::Partition}:budgets::${AWS::AccountId}:budget/aqp-solidaria-${StageName}-*"
 
 Outputs:
   GitHubDeployRoleArn:

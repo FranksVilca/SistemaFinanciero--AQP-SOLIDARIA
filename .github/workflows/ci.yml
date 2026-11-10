@@ -219,6 +219,7 @@ jobs:
           EnableCloudTrail=false
           EnableGuardDuty=false
           EnableSecurityHub=false
+          AlertEmail="${{ vars.ALERT_EMAIL }}"
       # The site and the API are published together: the build takes the address of the API and the Cognito identifiers
       # from the outputs of the stack that was just deployed.
       - name: Publish the frontend (build, upload with cache headers, invalidate CloudFront)

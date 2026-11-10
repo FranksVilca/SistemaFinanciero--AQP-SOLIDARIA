@@ -210,7 +210,7 @@ Aquí se aclara **qué servicio se dejó fuera o apagado y por qué**, para que 
 | **Límite de tasa por usuario en el gateway** | No existe | Los planes de uso por cliente son solo de REST API. El límite por donante está en el backend | Docs AWS |
 | **Cognito managed login (v2)** | No se usa; se usa el Hosted UI clásico | Exige Essentials o Plus. Ver el aviso de abajo | Docs AWS |
 
-> **Aviso sobre Cognito.** La plantilla **no declara** `UserPoolTier` y su valor por defecto es `ESSENTIALS`, que es el plan del pool desplegado (comprobado con `describe-user-pool`). No fue una decisión. Todo lo que el proyecto usa (Hosted UI clásico, TOTP, grupos, scopes personalizados, disparadores de Lambda) está disponible en el plan **Lite**, que cuesta unas 2.7 veces menos por usuario activo. Con unos 8 usuarios la diferencia son centavos, y el tramo gratuito no figura en la lista de precios. Además, el comentario de la plantilla sobre managed login es engañoso. Ver la sección 8 de [mejoras-consideradas.md](mejoras-consideradas.md) y P6 en [decisiones-y-comportamientos.md](decisiones-y-comportamientos.md).
+> **Nota sobre Cognito.** El plan del pool es `ESSENTIALS` y desde ahora la plantilla lo **declara** (`UserPoolTier: ESSENTIALS`): antes era solo el valor por defecto de CloudFormation y nadie lo había elegido (D15 en [decisiones-y-comportamientos.md](decisiones-y-comportamientos.md)). Todo lo que el proyecto usa está también en **Lite**, que cuesta unas 2.7 veces menos por usuario activo; con unos 8 usuarios la diferencia son centavos y el tramo gratuito no figura en la lista de precios. Pasar a Lite exige probar antes la revocación de tokens, `userInfo` y el cierre de sesión (sección 8 de [mejoras-consideradas.md](mejoras-consideradas.md)).
 
 ### 9.3 Que no existen por alcance, no por costo
 - **Pasarela de pagos:** la confirmación es simulada y solo existe en `academic`.
@@ -218,7 +218,7 @@ Aquí se aclara **qué servicio se dejó fuera o apagado y por qué**, para que 
 - **Gestión de cuentas:** no hay pantalla para crear, borrar o deshabilitar usuarios; el alta es por registro abierto. Sí existe la administración de **roles** (rol ADMIN y `npm run role`). Lo que falta es el flujo para que una persona **solicite** el rol de gestor (la otra mitad de T106).
 
 ### 9.4 Lo que el proyecto exige desde el principio y la cuenta real no tiene
-- **Alerta de gasto en AWS Budgets.** Aparece en la primera especificación (`specs/001`, RNF-09), en [requirements.md](../requirements.md) (CA-NF09.1) y en `design.md`; el plan de `specs/001` incluso la da por configurada «desde el día 1» para mitigar el riesgo de facturación inesperada. **La cuenta no tiene ningún presupuesto.** No hay un costo que lo justifique: la lista de precios no cobra una alerta de gasto por correo (solo los presupuestos *con acciones* y los informes enviados). Es el pendiente P7.
+- **Alerta de gasto en AWS Budgets.** Aparece en la primera especificación (`specs/001`, RNF-09), en [requirements.md](../requirements.md) (CA-NF09.1) y en `design.md`; el plan de `specs/001` incluso la da por configurada «desde el día 1» para mitigar el riesgo de facturación inesperada. **Ya está en la plantilla** (recurso `CostBudget`, D14), pero **solo se crea si se define la variable `ALERT_EMAIL`** y se aplicó antes el stack de bootstrap con el permiso `budgets`. Mientras eso no se haga, la cuenta sigue sin presupuesto. La lista de precios no cobra una alerta de gasto por correo (solo los presupuestos *con acciones* y los informes enviados). El resto de P7 (alarmas) sigue pendiente.
 - **Alarmas de CloudWatch y SNS:** la plantilla no define ninguna y la cuenta no tiene alarmas. Cuestan USD 0.10 por alarma al mes, y las primeras 1,000 notificaciones de correo de SNS al mes son gratuitas.
 - **Cuenta de operación.** Hoy se opera con la cuenta root de AWS (P3).
 
@@ -230,7 +230,8 @@ Aquí se aclara **qué servicio se dejó fuera o apagado y por qué**, para que 
 | Trails de CloudTrail | Ninguno |
 | GuardDuty y Security Hub | No activados en la cuenta |
 | PITR en las 4 tablas | Apagado |
-| Presupuestos (AWS Budgets) | Ninguno |
+| Presupuestos (AWS Budgets) | Ninguno (la plantilla ya lo define; se crea al configurar `ALERT_EMAIL`) |
+| Concurrencia de Lambda de la cuenta | Límite de 10 ejecuciones, todas sin reservar (por eso no se puede reservar concurrencia por función) |
 | Alarmas de CloudWatch | Ninguna |
 
 ## Cómo mantener este documento

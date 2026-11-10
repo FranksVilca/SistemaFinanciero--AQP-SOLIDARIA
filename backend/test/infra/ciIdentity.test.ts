@@ -186,7 +186,7 @@ describe("the role that creates the resources, usable only by CloudFormation", (
   // events: the EventBridge rule of the daily review expiry (ExpireReviewsFunction).
   it("uses no service that the application does not need", () => {
     expect(new Set(allActions.map((action) => action.split(":")[0]))).toEqual(
-      new Set(["cloudformation", "dynamodb", "lambda", "iam", "apigateway", "logs", "cognito-idp", "cloudfront", "s3", "cloudtrail", "events"])
+      new Set(["cloudformation", "dynamodb", "lambda", "iam", "apigateway", "logs", "cognito-idp", "cloudfront", "s3", "cloudtrail", "events", "budgets"])
     );
   });
 
@@ -256,6 +256,7 @@ describe("what the application template needs is covered", () => {
   const CREATED_BY: Record<string, string[]> = {
     "AWS::ApiGatewayV2::Api": ["apigateway:POST"],
     "AWS::ApiGatewayV2::Stage": ["apigateway:POST"],
+    "AWS::Budgets::Budget": ["budgets:ModifyBudget"],
     "AWS::CloudFront::Distribution": ["cloudfront:CreateDistribution"],
     "AWS::CloudFront::OriginAccessControl": ["cloudfront:CreateOriginAccessControl"],
     "AWS::CloudFront::ResponseHeadersPolicy": ["cloudfront:CreateResponseHeadersPolicy"],

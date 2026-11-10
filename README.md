@@ -200,7 +200,11 @@ paso "Show the identity that GitHub presented" del trabajo muestra qué identida
 | `AWS_CLOUDFORMATION_ROLE_ARN` | Salida `CloudFormationExecutionRoleArn` |
 | `COGNITO_DOMAIN_PREFIX` | El prefijo de Cognito de **su** despliegue (el de `sam deploy --guided`) |
 
-Sin las tres, el trabajo de despliegue se omite y el resto del pipeline corre igual. El prefijo es obligatorio porque es
+Opcional: la variable `ALERT_EMAIL` (el correo que recibe las alertas de gasto de AWS Budgets, mensual, USD 5 por defecto).
+Sin ella no se crea el presupuesto y el despliegue funciona igual. Para usarla, **primero** vuelva a aplicar la plantilla de
+arranque (ganó el permiso `budgets`) y **después** cree la variable; en el orden contrario el despliegue falla con `AccessDenied`.
+
+Sin las tres obligatorias, el trabajo de despliegue se omite y el resto del pipeline corre igual. El prefijo es obligatorio porque es
 único en todo AWS: con el valor por defecto el pipeline reemplazaría el dominio de Cognito de un stack ya desplegado y
 rompería el inicio de sesión. Tras desplegar, el mismo trabajo publica el frontend con el script del paso 3.
 

@@ -74,7 +74,7 @@ Documento vivo. Recoge **qué hace el sistema que puede parecer un fallo pero no
 - **El stack de bootstrap no lo despliega el CI** (ver D7): si cambia, una persona lo aplica antes del push.
 
 ### A11. Lo desplegado no activa todo lo que la plantilla permite
-- **Qué se ve:** la plantilla tiene parámetros para CloudTrail, PITR, GuardDuty y Security Hub, pero `samconfig.toml` los deja en `false`. En la cuenta real (comprobado el 2026-11-09 con el AWS CLI): no hay ningún trail, PITR está apagado en las 4 tablas, GuardDuty y Security Hub no están activados, y no existe ningún presupuesto ni alarma.
+- **Qué se ve:** la plantilla tiene parámetros para CloudTrail, PITR, GuardDuty y Security Hub, pero `samconfig.toml` los deja en `false`. En la cuenta real (comprobado el 2026-11-09 con el AWS CLI): no hay ningún trail, PITR está apagado en las 4 tablas, GuardDuty y Security Hub no están activados, y no existe ningún presupuesto ni alarma (el presupuesto ya está en la plantilla y se crea al configurar `ALERT_EMAIL`, D14).
 - **Por qué:** son servicios opcionales por costo o por prueba de 30 días (detalle y certeza de cada uno en [arquitectura-actual.md](arquitectura-actual.md), sección 9).
 - **Consecuencia:** no hay registro de quién cambió la infraestructura (la auditoría de la **aplicación** sí existe), ni restauración a un punto en el tiempo, ni aviso de costos.
 - **Certeza:** Verificado (AWS CLI).
@@ -149,6 +149,27 @@ Formato: qué se decidió, por qué, qué alternativas había y quién decidió.
 - **Por qué:** AWS Budgets y las alarmas se habían dado por «descartados por costo o alcance», y no se acordó eso: el proyecto exige la alerta de Budgets (CA-NF09.1) y no hay prueba de que su costo fuera el motivo. Presentarlos como decisión habría sido una justificación inventada.
 - **Efecto:** P7 sigue abierto y es el punto que más conviene cerrar antes de la entrega.
 
+### D14. La alerta de gasto (AWS Budgets) está en la plantilla y se activa con una variable del CI
+- **Decisión:** recurso `CostBudget` en `infra/template.yaml`: presupuesto mensual de costo de **toda la cuenta**, por defecto USD 5 (`MonthlyBudgetUsd`), con aviso por correo al 80 % y al 100 % de lo gastado y al 100 % de lo previsto. Solo se crea si el parámetro `AlertEmail` no está vacío; el CI lo toma de la variable de repositorio `ALERT_EMAIL`.
+- **Por qué una variable y no el correo en el repositorio:** el correo es un dato personal y el repositorio es compartido. Sin la variable el despliegue sigue funcionando y no crea el presupuesto.
+- **Para que funcione, James debe:** (1) volver a aplicar el stack de bootstrap (`github-oidc.yaml` ganó el permiso `budgets:ViewBudget` y `budgets:ModifyBudget` sobre `budget/aqp-solidaria-academic-*`; ver D7) y (2) crear la variable `ALERT_EMAIL` en GitHub. En ese orden: si se hace al revés, el despliegue falla con `AccessDenied`.
+- **Costo:** una alerta por correo no tiene cargo propio en la lista de precios de AWS (**Precio AWS**, 2026-11-09). **No verificado** contra la cuenta real: la creación efectiva del presupuesto no se ha probado en AWS (el emulador Floci no se usa para esto).
+- **Límite:** mide toda la cuenta, no solo este stack, y no corta el gasto: solo avisa.
+- **Cierra:** la mitad de P7 (la alerta). Las alarmas de CloudWatch siguen pendientes.
+
+### D15. El plan de Cognito se declara: Essentials
+- **Decisión:** `UserPoolTier: ESSENTIALS` explícito en la plantilla. Cierra P6.
+- **Por qué:** era el valor por defecto de CloudFormation y no una decisión, así que ahora consta. El pool ya estaba en Essentials, por lo que el cambio **no modifica nada desplegado** ni el costo.
+- **Alternativa no tomada:** Lite (unas 2.7 veces más barato por usuario activo). Con ~8 usuarios son centavos y exigiría probar antes la revocación de tokens, `userInfo` y el cierre de sesión del Hosted UI, que no aparecen en la tabla de funciones por plan.
+- **Corregido:** el comentario de la plantilla sobre managed login v2 decía que exigía un plan «que no es el gratuito», lo cual no explicaba nada.
+- **No se eligió Plus:** USD 0.020 por usuario activo y solo añade protección contra amenazas y riesgo continuo, que el proyecto declara como límite (NIST, principio 5).
+
+### D16. No se reserva concurrencia por función
+- **Decisión:** no se añade `ReservedConcurrentExecutions`.
+- **Por qué:** la cuenta tiene un límite de **10 ejecuciones concurrentes en total** y las 10 están sin reservar (**Cuenta real**, `aws lambda get-account-settings`, 2026-11-09). Lambda exige dejar un mínimo sin reservar, así que reservar para una función no es posible con ese límite; y reservar para una función le quitaría capacidad a las demás.
+- **Lo que acota la carga hoy:** el propio límite de la cuenta (10) y el límite de tasa del API Gateway (25/50 por defecto, 10/20 en las lecturas). El control `CKV_AWS_115` ya estaba omitido en `.checkov.yaml` con ese motivo.
+- **Cuándo revisarlo:** si se sube el límite de la cuenta (solicitud de aumento de cuota).
+
 ---
 
 ## Parte C. Decisiones pendientes
@@ -160,8 +181,8 @@ Formato: qué se decidió, por qué, qué alternativas había y quién decidió.
 | P3 | Cuenta root de AWS | Se opera con la cuenta root (`746727375048`). | Un usuario con IAM Identity Center o un rol acotado; root guardada con MFA. |
 | P4 | Inicio de sesión silencioso | ¿Evitar el clic tras recargar sin persistir tokens? | Probarlo contra el stack antes de decidir (ver D6). |
 | P5 | Índice `status-createdAt-index` | Indexa todas las donaciones con proyección `ALL`. | Convertirlo en índice disperso si el volumen crece. |
-| P6 | Plan de Cognito | El pool está en **ESSENTIALS** porque la plantilla no declara `UserPoolTier` y ese es el valor por defecto; no fue una decisión. Todo lo que se usa está en **Lite** (USD 0.0055 frente a USD 0.015 por usuario activo al mes, `us-east-1`). Con ~8 usuarios son centavos; el tramo gratuito no figura en la lista de precios. | Declarar el plan de forma explícita (Lite o Essentials) y corregir el comentario engañoso de la plantilla. Probar antes la revocación de tokens en Lite. |
-| P7 | Alertas de costo | **Ya era pendiente desde `specs/001`** (RNF-09; también `requirements.md` CA-NF09.1 y `design.md`), y el plan de `specs/001` la daba por hecha «desde el día 1». La cuenta no tiene presupuesto ni alarmas. Costo: una alerta de gasto por correo no tiene cargo propio en la lista de precios; cada alarma estándar cuesta USD 0.10 al mes. | Crear el presupuesto y las alarmas básicas en la plantilla. Es lo que más conviene cerrar antes de la entrega. |
+| P6 | ~~Plan de Cognito~~ | **Resuelto** en D15 (Essentials declarado). Queda como mejora opcional pasar a Lite, probando antes la revocación de tokens. | — |
+| P7 | Alertas de costo | **Ya era pendiente desde `specs/001`** (RNF-09; también `requirements.md` CA-NF09.1 y `design.md`). **Resuelta a medias:** el presupuesto está en la plantilla (D14) y falta activarlo (bootstrap y variable `ALERT_EMAIL`). Siguen pendientes las alarmas de CloudWatch con SNS (USD 0.10 por alarma al mes). | Activar D14 y crear 4 o 5 alarmas (5xx del API, errores de Lambda, job de vencimiento). |
 
 ---
 
