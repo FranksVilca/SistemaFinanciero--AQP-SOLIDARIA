@@ -35,7 +35,7 @@ secure-donations-2026/
 ├── infra/                     # Único template SAM (HTTP API, Cognito, DynamoDB, CloudFront, logs, CloudTrail)
 ├── scripts/                   # cleanup.ps1: vacía los buckets y elimina el stack
 ├── policies/                  # Documentación de la fase 2 (Cedar); no se aplica
-├── docs/                      # OpenAPI (api.yaml), Threat Model, guía del plan gratuito, hallazgos Zero Trust
+├── docs/                      # OpenAPI (api.yaml), Threat Model, guía del plan gratuito, hallazgos Zero Trust, decisiones y comportamientos esperados
 └── specs/                     # Especificaciones ejecutables con Spec-Kit
 ```
 
