@@ -34,6 +34,8 @@ en 87,96 s. La captura adicional muestra la confirmación simulada y el acceso m
 El caso móvil crea una cuenta DONANTE independiente por modo. El build y Vite comparten stack: reutilizar la cuenta
 de demostración para todos los casos añadía seis donaciones y podía agotar el cupo de cinco por minuto en un runner
 rápido. Se aísla el dato de prueba; no se elevan ni desactivan los límites de seguridad.
+La simulación de S/ 1.01 también reveló una comparación con decimales en la prueba previa de caché
+(`101.01` frente a `101.00999999999999`). Esa comprobación ahora convierte lo mostrado a céntimos enteros.
 
 Capturas conservadas: [catálogo](qa-mobile/catalog-375.png), [detalle](qa-mobile/detail-375.png),
 [donación](qa-mobile/donation-375.png), [confirmación](qa-mobile/confirmation-375.png),

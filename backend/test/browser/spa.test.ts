@@ -251,14 +251,14 @@ describe.each(SITES)("SPA served as: %s", (kind) => {
   it("shows a new donation in the history that was opened before, and the approved amount in the catalog", async () => {
     const { context, page, watched } = await newPage();
     const donationCount = async (): Promise<number> => page.getByText(/^ID: /).count();
-    const raisedByFirstProject = async (): Promise<number> => {
+    const raisedCentsByFirstProject = async (): Promise<number> => {
       await page.getByRole("link", { name: "Proyectos" }).first().click();
       await page
         .getByRole("link", { name: /Ver detalle y donar/ })
         .first()
         .waitFor();
       const raised = (await bodyText(page)).match(/Recaudado: S\/\s*([\d,.]+)/)?.[1] ?? "";
-      return Number(raised.replace(/,/g, ""));
+      return Math.round(Number(raised.replace(/,/g, "")) * 100);
     };
     await signIn(page, "donante@aqpsolidaria.pe");
 
@@ -268,7 +268,7 @@ describe.each(SITES)("SPA served as: %s", (kind) => {
     // The list is loaded when the loading indicator is gone: counting earlier would read an empty list.
     await page.getByRole("status").waitFor({ state: "detached" });
     const donationsBefore = await donationCount();
-    const raisedBefore = await raisedByFirstProject();
+    const raisedBeforeCents = await raisedCentsByFirstProject();
 
     await page
       .getByRole("link", { name: /Ver detalle y donar/ })
@@ -290,7 +290,7 @@ describe.each(SITES)("SPA served as: %s", (kind) => {
     await page.getByText("CONFIRMADA_SIMULADA").first().waitFor();
 
     // The catalog had the old amount cached: it must show the approved donation without a reload.
-    await expect.poll(raisedByFirstProject, { timeout: 15_000 }).toBe(raisedBefore + 50);
+    await expect.poll(raisedCentsByFirstProject, { timeout: 15_000 }).toBe(raisedBeforeCents + 5_000);
     expect(watched.consoleErrors).toEqual([]);
     await context.close();
   });
