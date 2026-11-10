@@ -14,7 +14,8 @@
     "test:floci:e2e": "vitest run --config vitest.floci-e2e.config.ts",
     "local:stack": "vite-node scripts/localStack.ts",
     "local:stop": "vite-node scripts/localStop.ts",
-    "test:browser": "vitest run --config vitest.browser.config.ts"
+    "test:browser": "vitest run --config vitest.browser.config.ts",
+    "test:performance:local": "vite-node scripts/performanceLocal.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1164.0",
