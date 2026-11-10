@@ -13,6 +13,8 @@ Sistema cloud-native serverless de publicación de causas sociales y registro de
 - **Policy Enforcement Point (PEP)**: API Gateway HTTP API con JWT Authorizer nativo y validación de scopes OAuth + CloudFront con Content Security Policy (CSP) restrictiva.
 - **Policy Decision Point (PDP)**: Cómputo en AWS Lambda (Node.js 24) con roles IAM de mínimo privilegio por función; módulo `authz` embebido (RBAC + validación de ownership), siempre invocado a través de `withAuth()`: una prueba falla si una ruta del template no lo usa. Amazon Verified Permissions con Cedar es la **fase 2** y hoy no está conectado (ver `policies/README.md`).
 - **Policy Administrator (PA)**: Amazon Cognito User Pool con Authorization Code Grant + PKCE, tokens de vida corta ($\le 15$ min) guardados en memoria y MFA TOTP obligatorio para todo el pool (Cognito no lo aplica por grupo, así que también los donantes enrolan un autenticador una vez). Las acciones sensibles (publicar, ver auditoría, confirmar una donación, decidir una revisión) revalidan la sesión contra Cognito.
+- **Control de abuso y revisión humana**: contadores atómicos por donante (máximo 5 donaciones nuevas por minuto y revisión por monto horario o fraccionamiento) y una cola donde un `REVISOR` aprueba o rechaza lo retenido, con cuatro ojos (ver [docs/arquitectura-actual.md](docs/arquitectura-actual.md)).
+- **Administración de roles**: rol `ADMIN` con pantalla propia y script `npm run role`; `AUDITOR` y `ADMIN` van solos y `GESTOR` no se combina con `REVISOR`.
 - **Integridad e Idempotencia**: Amazon DynamoDB (On-Demand) con `TransactWriteItems` para reserva de clave de idempotencia (UUID) y control estricto de concurrencia (T08: 10 peticiones paralelas $\to$ 1 éxito, 9 conflictos).
 
 ---
@@ -24,18 +26,22 @@ secure-donations-2026/
 ├── frontend/                  # SPA React 19 + Vite + Tailwind CSS (tokens en memoria)
 │   ├── src/auth/              # oidc-client-ts y AuthContext
 │   ├── src/components/        # Componentes accesibles (ProjectCard, DonationModal)
-│   ├── src/pages/             # Catálogo, Detalle, Historial, Gestor, Auditor
+│   ├── src/pages/             # Catálogo, Detalle, Historial, Gestor, Revisión, Usuarios (admin), Auditor
 │   └── src/services/          # Cliente API con TanStack Query
 ├── backend/                   # AWS Lambda Handlers en Node.js 24 + TypeScript
 │   ├── src/projects/          # Listar, Detalle, Crear, Publicar, Estadísticas
-│   ├── src/donations/         # Intención, Simulación condicional, Historial propio
+│   ├── src/donations/         # Intención con controles de velocidad, Simulación condicional, Historial propio
+│   ├── src/reviews/           # Cola y decisión del revisor, job diario de vencimiento
+│   ├── src/admin/             # Listar usuarios y dar/quitar roles (rol ADMIN)
+│   ├── src/identity/          # Trigger de Cognito: quien se registra es DONANTE
+│   ├── scripts/               # setRole.ts (`npm run role`) y el entorno local
 │   ├── src/authz/             # withAuth() obligatorio, evaluador RBAC + ownership, revalidación de sesión
 │   ├── src/audit/             # Escritura única y pseudonimizada de eventos y consulta
 │   └── test/                  # unit (sin base de datos), integration (DynamoDB Local) e infra (template)
 ├── infra/                     # Único template SAM (HTTP API, Cognito, DynamoDB, CloudFront, logs, CloudTrail)
 ├── scripts/                   # cleanup.ps1: vacía los buckets y elimina el stack
 ├── policies/                  # Documentación de la fase 2 (Cedar); no se aplica
-├── docs/                      # OpenAPI (api.yaml), Threat Model, guía del plan gratuito, hallazgos Zero Trust, decisiones y comportamientos esperados
+├── docs/                      # Arquitectura actual, OpenAPI (api.yaml), Threat Model, guía del plan gratuito, hallazgos Zero Trust, decisiones y comportamientos esperados, mejoras consideradas
 └── specs/                     # Especificaciones ejecutables con Spec-Kit
 ```
 

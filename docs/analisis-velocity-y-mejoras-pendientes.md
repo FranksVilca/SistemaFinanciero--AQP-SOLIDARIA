@@ -44,6 +44,8 @@ Se llegó a sugerir WAF delante del API. **Es incorrecto para esta arquitectura*
 No se recomienda. Ya está declarado como fuera de alcance en `docs/zta-hallazgos-y-mejoras.md` y `.checkov.yaml` (CKV_AWS_68).
 
 ### 2.3 Costos de los servicios de observabilidad (verificar precios vigentes en la calculadora de AWS)
+
+> **Verificado el 2026-11-09** con la lista de precios de AWS (`us-east-1`), que sustituye lo que aquí se citaba de memoria: el correo de **SNS** incluye las primeras 1,000 notificaciones al mes gratis y luego USD 2.00 por 100,000; una **alarma estándar de CloudWatch** cuesta USD 0.10 al mes (que las 10 primeras sean gratis **no se pudo verificar**: la lista de precios no incluye tramos gratuitos); en **AWS Budgets** solo cobran los presupuestos *con acciones* (los primeros 62 días-presupuesto al mes a USD 0.00, luego USD 0.10 por día) y los informes enviados, de modo que una alerta de gasto por correo no tiene cargo propio en la lista. Detalle en [mejoras-consideradas.md](mejoras-consideradas.md).
 - **SNS:** 1 millón de publicaciones/mes gratis; email: primeras 1,000 al mes gratis. Evitar SMS (se cobra por mensaje). Al suscribir un email hay que confirmar el enlace que llega, o no se reciben alertas.
 - **CloudWatch:** las primeras 10 alarmas estándar son gratis; después, unos US$0.10 por alarma al mes.
 - **AWS Budgets:** los dos primeros budgets son gratis. Solo avisa, no bloquea.

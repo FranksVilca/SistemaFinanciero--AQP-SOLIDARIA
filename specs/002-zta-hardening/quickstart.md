@@ -51,7 +51,7 @@ docker compose -f backend/test/floci/docker-compose.lambda.yml up -d   # monta e
 npm run test:floci:e2e
 ```
 
-Esperado (13 pruebas): el template desplegado en Floci, el código real de las 10 funciones (nueve de la API y el disparador de registro) corriendo en contenedores con su rol IAM (la política en línea del template), usuarios que inician sesión por el login alojado con los scopes del SPA, y el flujo completo: 401 y 403 en el gateway, crear y publicar un proyecto, donar con idempotencia, confirmar, historial, auditoría pseudonimizada y revocación de sesión.
+Esperado (13 pruebas; con las funciones de revisión y de administración el stack tiene hoy 15 funciones y el e2e lo comprueba): el template desplegado en Floci, el código real de las funciones (al cerrar esta feature, 10: nueve de la API y el disparador de registro) corriendo en contenedores con su rol IAM (la política en línea del template), usuarios que inician sesión por el login alojado con los scopes del SPA, y el flujo completo: 401 y 403 en el gateway, crear y publicar un proyecto, donar con idempotencia, confirmar, historial, auditoría pseudonimizada y revocación de sesión.
 
 **Seguridad:** montar el socket de Docker da al contenedor control del host Docker. Hazlo solo en una máquina tuya o en un runner efímero de CI.
 

@@ -2,7 +2,7 @@
 
 Documento vivo. Recoge **qué hace el sistema que puede parecer un fallo pero no lo es**, y **qué decisiones se tomaron y por qué**, en especial las que dependen de Zero Trust (NIST SP 800-207) o de la comodidad de uso. Cuando algo sorprenda a alguien que usa o prueba el sistema, se anota aquí. Cuando se decida entre alternativas, se anota con su motivo.
 
-- Última actualización: 2026-11-09.
+- Última actualización: 2026-11-09 (se añadieron A11, D12, D13, P6 y P7; precios verificados el 2026-11-09).
 - Cómo se marca la certeza: **Verificado** (probado con tests, en el emulador o en AWS real), **Del código** (se deduce de leerlo, sin ejecutarlo en ese caso) y **No verificado** (dato de memoria o hipótesis). Lo no verificado no debe citarse como un hecho.
 - Documentos relacionados: [zta-hallazgos-y-mejoras.md](zta-hallazgos-y-mejoras.md) (revisión Zero Trust), [threat-model.md](threat-model.md), [analisis-velocity-y-mejoras-pendientes.md](analisis-velocity-y-mejoras-pendientes.md), [operations-notes.md](operations-notes.md).
 
@@ -73,6 +73,12 @@ Documento vivo. Recoge **qué hace el sistema que puede parecer un fallo pero no
 - El trabajo `deploy` depende de todos los demás. Un `format:check`, un `eslint` con errores de complejidad (más de 10) o un test en rojo hacen que el despliegue **se omita sin avisar de otra forma**.
 - **El stack de bootstrap no lo despliega el CI** (ver D7): si cambia, una persona lo aplica antes del push.
 
+### A11. Lo desplegado no activa todo lo que la plantilla permite
+- **Qué se ve:** la plantilla tiene parámetros para CloudTrail, PITR, GuardDuty y Security Hub, pero `samconfig.toml` los deja en `false`. En la cuenta real (comprobado el 2026-11-09 con el AWS CLI): no hay ningún trail, PITR está apagado en las 4 tablas, GuardDuty y Security Hub no están activados, y no existe ningún presupuesto ni alarma.
+- **Por qué:** son servicios opcionales por costo o por prueba de 30 días (detalle y certeza de cada uno en [arquitectura-actual.md](arquitectura-actual.md), sección 9).
+- **Consecuencia:** no hay registro de quién cambió la infraestructura (la auditoría de la **aplicación** sí existe), ni restauración a un punto en el tiempo, ni aviso de costos.
+- **Certeza:** Verificado (AWS CLI).
+
 ---
 
 ## Parte B. Decisiones tomadas
@@ -88,7 +94,7 @@ Formato: qué se decidió, por qué, qué alternativas había y quién decidió.
 ### D2. Existe el rol ADMIN, con pantalla y con script
 - **Decisión:** ADMIN gestiona identidades y roles y nada más (no dona, no crea proyectos, no revisa, no ve la auditoría). Va solo, como AUDITOR.
 - **Por qué:** quitar la dependencia de comandos largos de AWS para tareas de rutina.
-- **Alternativa considerada:** solo un script. Se valoró como más simple y con menos superficie de ataque; se prefirió tener también la pantalla. **Decide:** James.
+- **Alternativa considerada:** solo un script. Se valoró como más simple y con menos superficie de ataque; se prefirió tener también la pantalla. **Decide:** James. Con esto se cierra la mitad administrativa de T106 (`specs/002-zta-hardening/tasks.md`: «decidir si hay un rol administrador dentro de la app»); falta el flujo para que una persona **solicite** el rol de gestor.
 
 ### D3. El ADMIN no cambia sus propios roles ni los de AUDITOR o ADMIN, y solo asigna DONANTE, GESTOR y REVISOR
 - **Por qué:** cuatro ojos. Quien consiga el rol ADMIN no puede concederse poder, silenciar al auditor ni crear más administradores desde la aplicación. Como ADMIN tampoco se asigna desde la app, el sistema **nunca queda sin administrador** por esa vía.
@@ -126,6 +132,23 @@ Formato: qué se decidió, por qué, qué alternativas había y quién decidió.
 ### D10. Flujo de trabajo del repositorio
 - Se trabaja en la rama actual y **James hace los commits**; no se crean ramas por iniciativa propia. El despliegue es el push o merge a `main`.
 
+### D11. Cómo se documenta lo construido fuera de `specs/`
+- **Situación:** `specs/001-secure-donations` y `specs/002-zta-hardening` son especificaciones históricas de dos features. Los controles de velocidad, la revisión de donaciones y la administración de roles se construyeron **sin una carpeta de `specs/` propia**.
+- **Decisión:** la referencia de lo implementado es [arquitectura-actual.md](arquitectura-actual.md) (con su diagrama), más los contratos de `specs/002-zta-hardening/contracts/` que sí se actualizaron. En las especificaciones históricas solo se añadieron notas que indican el estado posterior; no se reescribieron.
+- **Por qué:** reescribir una especificación cerrada falsea su historia, y crear a posteriori un `specs/003` con spec, plan y tareas inventados sería documentación retroactiva sin valor.
+- **Alternativa no tomada:** generar `specs/003-...` retroactivo con las herramientas de Spec-Kit. Es posible si la entrega lo exige.
+- **Mantenimiento:** el diagrama y el documento se actualizan cuando cambie la plantilla; los tests que cuentan funciones y rutas avisan si algo cambia sin documentarse.
+
+### D12. Se documenta por separado lo que se dejó fuera por costo y lo que se dejó fuera por limitación técnica
+- **Decisión:** [arquitectura-actual.md](arquitectura-actual.md), sección 9, separa los servicios apagados por costo (Cognito Plus, GuardDuty, Security Hub, CloudTrail, PITR, claves KMS propias, VPC, Verified Permissions, SMS, Organizations) de los que no se usan por una limitación técnica (WAF y el límite por usuario, que un HTTP API no admite) y de los que faltan por alcance (pasarela de pagos, cierre de campaña).
+- **Por qué:** quien evalúe el proyecto no debe leer un servicio ausente como un olvido, y tampoco confundir «no se puede» con «no se quiso pagar».
+- **Cómo se sabe cada dato:** cada fila marca si se comprobó en la documentación de AWS, en la cuenta real o solo está afirmado en el repositorio. Los precios no se citan.
+
+### D13. Las mejoras que no se hicieron se justifican con un motivo honesto
+- **Decisión:** [mejoras-consideradas.md](mejoras-consideradas.md) clasifica cada ausencia como INNECESARIO, TÉCNICO, COSTO, ALCANCE o **PENDIENTE**. PENDIENTE significa que no hubo decisión de excluirlo.
+- **Por qué:** AWS Budgets y las alarmas se habían dado por «descartados por costo o alcance», y no se acordó eso: el proyecto exige la alerta de Budgets (CA-NF09.1) y no hay prueba de que su costo fuera el motivo. Presentarlos como decisión habría sido una justificación inventada.
+- **Efecto:** P7 sigue abierto y es el punto que más conviene cerrar antes de la entrega.
+
 ---
 
 ## Parte C. Decisiones pendientes
@@ -137,6 +160,8 @@ Formato: qué se decidió, por qué, qué alternativas había y quién decidió.
 | P3 | Cuenta root de AWS | Se opera con la cuenta root (`746727375048`). | Un usuario con IAM Identity Center o un rol acotado; root guardada con MFA. |
 | P4 | Inicio de sesión silencioso | ¿Evitar el clic tras recargar sin persistir tokens? | Probarlo contra el stack antes de decidir (ver D6). |
 | P5 | Índice `status-createdAt-index` | Indexa todas las donaciones con proyección `ALL`. | Convertirlo en índice disperso si el volumen crece. |
+| P6 | Plan de Cognito | El pool está en **ESSENTIALS** porque la plantilla no declara `UserPoolTier` y ese es el valor por defecto; no fue una decisión. Todo lo que se usa está en **Lite** (USD 0.0055 frente a USD 0.015 por usuario activo al mes, `us-east-1`). Con ~8 usuarios son centavos; el tramo gratuito no figura en la lista de precios. | Declarar el plan de forma explícita (Lite o Essentials) y corregir el comentario engañoso de la plantilla. Probar antes la revocación de tokens en Lite. |
+| P7 | Alertas de costo | **Ya era pendiente desde `specs/001`** (RNF-09; también `requirements.md` CA-NF09.1 y `design.md`), y el plan de `specs/001` la daba por hecha «desde el día 1». La cuenta no tiene presupuesto ni alarmas. Costo: una alerta de gasto por correo no tiene cargo propio en la lista de precios; cada alarma estándar cuesta USD 0.10 al mes. | Crear el presupuesto y las alarmas básicas en la plantilla. Es lo que más conviene cerrar antes de la entrega. |
 
 ---
 

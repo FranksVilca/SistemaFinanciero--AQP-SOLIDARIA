@@ -10,6 +10,8 @@ Este documento compara tres versiones de la arquitectura de AQP-SOLIDARIA para v
 
 Los diagramas se generan con D2 (ver el pie de cada archivo `.d2`).
 
+> **Para lo que está implementado hoy** (incluida la revisión de donaciones, los controles de velocidad y la administración de roles, que ninguno de estos diagramas muestra) ver [arquitectura-actual.md](arquitectura-actual.md) y su diagrama [zta-architecture-current.png](diagrams/zta-architecture-current.png). Este documento y sus diagramas conservan la comparación entre versiones.
+
 > **Estado al 2026-11-08:** la versión **Mejorada** ya está implementada en el código y en `infra/template.yaml` (feature `specs/002-zta-hardening/`). Las columnas "Actual" de este documento describen el estado **anterior** a esa feature. Lo que sigue **pendiente de comprobar en una cuenta de AWS real** está en `evidence/test-run-report.md`, sección 3.
 >
 > Diferencias entre el diagrama mejorado y lo implementado: PITR es un parámetro (siempre activo en `production`), la protección contra borrado solo se activa en `production`, GuardDuty y Security Hub se añadieron como parámetros opcionales con prueba de 30 días (no figuran en el diagrama), y Verified Permissions sigue en la fase 2.

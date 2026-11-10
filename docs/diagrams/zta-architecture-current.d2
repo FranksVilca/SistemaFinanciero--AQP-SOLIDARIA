@@ -1,0 +1,116 @@
+# AQP-SOLIDARIA · Arquitectura ACTUAL (lo implementado en infra/template.yaml y backend/src)
+# Render:  d2 --pad 30 zta-architecture-current.d2 zta-architecture-current.svg   (también .png)
+# Iconos de AWS: se descargan de icons.terrastruct.com al renderizar (hace falta internet) y quedan incrustados en el SVG
+# y el PNG, que se publican ya generados. Explicación: ../arquitectura-actual.md
+
+vars: {
+  icons: https://icons.terrastruct.com/aws
+}
+
+direction: down
+
+classes: {
+  zone-red:    { style: { fill: "#FDEDEC"; stroke: "#C0392B"; stroke-width: 2; border-radius: 14; font-color: "#C0392B"; bold: true; font-size: 20 } }
+  zone-grey:   { style: { fill: "#F3F4F6"; stroke: "#6B7280"; stroke-width: 2; border-radius: 14; font-color: "#4B5563"; bold: true; font-size: 20 } }
+  zone-blue:   { style: { fill: "#EAF1FB"; stroke: "#1F5FBF"; stroke-width: 2; border-radius: 14; font-color: "#1F5FBF"; bold: true; font-size: 20 } }
+  zone-orange: { style: { fill: "#FEF5E7"; stroke: "#E67E22"; stroke-width: 2; border-radius: 14; font-color: "#B9600F"; bold: true; font-size: 20 } }
+  zone-green:  { style: { fill: "#EAF7EE"; stroke: "#1E8449"; stroke-width: 2; border-radius: 14; font-color: "#1E8449"; bold: true; font-size: 20 } }
+  zone-purple: { style: { fill: "#F4ECF7"; stroke: "#7D3C98"; stroke-width: 2; border-radius: 14; font-color: "#7D3C98"; bold: true; font-size: 20 } }
+  svc:         { width: 90; height: 90; style: { font-size: 15 } }
+  box:         { shape: rectangle; style: { fill: "#FFFFFF"; stroke: "#374151"; stroke-width: 2; border-radius: 10; font-size: 16 } }
+  code:        { shape: rectangle; style: { fill: "#FFFFFF"; stroke: "#1E8449"; stroke-width: 2; stroke-dash: 4; border-radius: 10; font-size: 15 } }
+  flow:        { style: { stroke-width: 3; font-size: 15 } }
+  soft:        { style: { stroke-width: 2; stroke-dash: 5; font-size: 14; stroke: "#6B7280"; font-color: "#4B5563" } }
+}
+
+zona: "ZONA NO CONFIABLE · navegador (nunca se confía)" {
+  class: zone-red
+  users: "Visitante · Donante · Gestor\nRevisor · Auditor · Admin" { shape: person; style.font-size: 16 }
+  spa: "SPA React (tokens solo en memoria)\nventana emergente de login (PKCE)\n/history /manager /reviews /auditor /admin" { class: box; style.stroke: "#C0392B" }
+}
+
+front: "ENTREGA DEL FRONTEND (archivos estáticos)" {
+  class: zone-grey
+  cf: "CloudFront + OAC\nHTTPS · CSP · HSTS · X-Frame DENY" { class: svc; shape: image; icon: ${icons}/Networking%20%26%20Content%20Delivery/Amazon-CloudFront.svg }
+  s3: "S3 privado (SPA compilada)" { class: svc; shape: image; icon: ${icons}/Storage/Amazon-Simple-Storage-Service-S3.svg }
+  cf -> s3
+}
+
+pa: "PA · identidad" {
+  class: zone-blue
+  cognito: "Amazon Cognito (1 user pool)\nMFA TOTP obligatorio · PKCE\naccess 15 min · refresh 7 días\ngrupos: DONANTE GESTOR REVISOR AUDITOR ADMIN" { class: svc; shape: image; icon: ${icons}/Security%2C%20Identity%2C%20%26%20Compliance/Amazon-Cognito.svg }
+  trigger: "Trigger post-confirmación\nregistro → DONANTE" { class: code }
+  cognito -> trigger: "alta nueva" { class: soft }
+}
+
+pep: "PEP · punto de aplicación" {
+  class: zone-orange
+  apigw: "API Gateway HTTP API\nJWT authorizer + scope por ruta\nthrottling 25/50 (lecturas 10/20)\nCORS solo al origen de CloudFront" { class: svc; shape: image; icon: ${icons}/Networking%20%26%20Content%20Delivery/Amazon-API-Gateway.svg }
+}
+
+back: "PDP · cómputo (Lambda Node.js 24, rol IAM mínimo por función)" {
+  class: zone-green
+  lam: "AWS Lambda\n15 funciones · 1 rol IAM cada una" { class: svc; shape: image; icon: ${icons}/Compute/AWS-Lambda.svg }
+  authz: "withAuth() en toda ruta\n1 rol → 2 dueño/recurso →\n3 sesión + grupos en acciones sensibles\n(reglas de roles: roleRules.ts)" { class: code }
+  projects: "projects\nlistar · detalle · stats (públicas)\ncrear · publicar (GESTOR)" { class: box }
+  donations: "donations\ncrear (DONANTE) + controles de velocidad\nsimular (solo academic) · historial" { class: box }
+  reviews: "reviews\ncola · decidir (REVISOR)\njob diario de vencimiento" { class: box }
+  admin: "admin\nlistar usuarios · dar/quitar rol (ADMIN)" { class: box }
+  audit: "audit\nconsultar (AUDITOR)" { class: box }
+}
+
+data: "DATOS · DynamoDB on-demand" {
+  class: zone-purple
+  projects: "projects\nPK projectId" { class: svc; shape: image; icon: ${icons}/Database/Amazon-DynamoDB.svg }
+  donations: "donations\nPK donationId\nGSI donorSub-createdAt\nGSI status-createdAt" { class: svc; shape: image; icon: ${icons}/Database/Amazon-DynamoDB.svg }
+  idem: "idempotency\nPK pk · TTL expiresAt\nclaves + contadores velocity#" { class: svc; shape: image; icon: ${icons}/Database/Amazon-DynamoDB.svg }
+  auditdb: "audit (solo inserción)\nPK auditDay · SK timestamp#eventId\npolítica: funciones no editan ni borran" { class: svc; shape: image; icon: ${icons}/Database/Amazon-DynamoDB.svg }
+}
+
+tel: "TELEMETRÍA" {
+  class: zone-grey
+  cw: "CloudWatch Logs\n(14 días)" { class: svc; shape: image; icon: ${icons}/Management%20%26%20Governance/Amazon-CloudWatch.svg }
+  ct: "CloudTrail\n(opcional,\napagado)" { class: svc; shape: image; icon: ${icons}/Management%20%26%20Governance/AWS-CloudTrail.svg }
+}
+
+ci: "CI/CD · GitHub Actions" {
+  class: zone-green
+  tests: "lint · formato · tipos · unitarias\nintegración · infra · Floci · escaneo" { class: box }
+  deploy: "deploy (solo push a main)\nOIDC sin claves · 2 roles acotados\nsam build + deploy → CloudFormation" { class: svc; shape: image; icon: ${icons}/Management%20%26%20Governance/AWS-CloudFormation.svg }
+  tests -> deploy: "solo si todo pasa" { class: flow; style.stroke: "#1E8449" }
+}
+
+op: "OPERADOR · terminal con credenciales AWS" {
+  class: zone-red
+  script: "npm run role\nAUDITOR · ADMIN · primer admin\nmismas reglas · actor operator" { class: code }
+  boot: "stack bootstrap (github-oidc)\nlo aplica una persona, no el CI" { class: box }
+}
+
+zona.users -> zona.spa
+zona.spa -> front.cf: "① carga la SPA" { class: flow }
+zona.spa -> pa.cognito: "② login (ventana emergente)" { class: flow; style.stroke: "#1F5FBF" }
+zona.spa -> pep.apigw: "③ Bearer access token" { class: flow; style.stroke: "#E67E22" }
+pa.cognito -> pep.apigw: "claves JWKS" { class: soft }
+pep.apigw -> back.lam: "④ solo con JWT y scope válidos" { class: flow; style.stroke: "#1E8449" }
+back.lam -> back.authz: "dentro de cada función" { class: soft }
+back.authz -> back.projects
+back.authz -> back.donations
+back.authz -> back.reviews
+back.authz -> back.admin
+back.authz -> back.audit
+back.authz -> pa.cognito: "⑤ relee grupos y sesión\n(acciones sensibles)" { class: soft }
+back.projects -> data.projects
+back.donations -> data.donations: "transacción:\ndonación + clave + contadores" { class: flow; style.stroke: "#7D3C98" }
+back.donations -> data.idem
+back.donations -> data.projects: "confirmar suma al total"
+back.reviews -> data.donations: "escritura condicional\nstatus = EN_REVISION"
+back.admin -> pa.cognito: "AdminAdd/RemoveUserFromGroup" { class: flow; style.stroke: "#1F5FBF" }
+back.audit -> data.auditdb: "lee por día" { class: soft }
+back.authz -> data.auditdb: "⑥ evento (solo PutItem)" { class: flow; style.stroke: "#7D3C98" }
+pa.trigger -> data.auditdb: "ROLE_ASSIGNED" { class: soft }
+back -> tel.cw: "logs" { class: soft }
+pep.apigw -> tel.cw: "logs de acceso" { class: soft }
+ci.deploy -> back: "despliega la plantilla" { class: soft }
+op.script -> pa.cognito: "cambia grupos" { class: flow; style.stroke: "#C0392B" }
+op.script -> data.auditdb: "ROLE_GRANTED / ROLE_REVOKED" { class: soft }
+op.boot -> ci.deploy: "crea la identidad del CI" { class: soft }

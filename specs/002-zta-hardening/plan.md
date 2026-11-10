@@ -26,7 +26,7 @@ Llevar la plataforma a la arquitectura objetivo (`docs/diagrams/zta-architecture
 
 **Constraints**: AWS Free Plan (constitución V), log retention ≤ 14 días, sin claves de larga duración en CI (OIDC), `sam delete` debe seguir limpiando la etapa académica
 
-**Scale/Scope**: curso académico; 9 funciones, 4 tablas, 3 roles
+**Scale/Scope**: curso académico; 9 funciones, 4 tablas, 3 roles (al cerrar esta feature. Hoy son 15 funciones y 5 roles por la revisión de donaciones, los controles de velocidad y la administración de roles, que se construyeron sin una carpeta de `specs/` propia; ver `docs/arquitectura-actual.md`)
 
 ## Constitution Check
 

@@ -18,12 +18,19 @@ npm run local        # déjalo corriendo en su terminal: si lo cierras, http://l
 Esto arranca Floci, despliega la plantilla, crea usuarios y proyectos de ejemplo, escribe `frontend/.env.local` y
 lanza Vite. Cuando termine, abre **http://localhost:3000**.
 
-| Usuario                    | Rol     | Contraseña    |
-| -------------------------- | ------- | ------------- |
-| donante@aqpsolidaria.pe    | DONANTE | `Passw0rd!x`  |
-| gestor@aqpsolidaria.pe     | GESTOR  | `Passw0rd!x`  |
-| auditor@aqpsolidaria.pe    | AUDITOR | `Passw0rd!x`  |
-| revisor@aqpsolidaria.pe    | REVISOR | `Passw0rd!x`  |
+| Usuario                            | Roles             | Contraseña   |
+| ---------------------------------- | ----------------- | ------------ |
+| donante@aqpsolidaria.pe            | DONANTE           | `Passw0rd!x` |
+| gestor@aqpsolidaria.pe             | GESTOR            | `Passw0rd!x` |
+| auditor@aqpsolidaria.pe            | AUDITOR           | `Passw0rd!x` |
+| revisor@aqpsolidaria.pe            | REVISOR           | `Passw0rd!x` |
+| admin@aqpsolidaria.pe              | ADMIN             | `Passw0rd!x` |
+| donante.revisor@aqpsolidaria.pe    | DONANTE + REVISOR | `Passw0rd!x` |
+| donante.gestor@aqpsolidaria.pe     | DONANTE + GESTOR  | `Passw0rd!x` |
+| invalido@aqpsolidaria.pe           | GESTOR + REVISOR  | `Passw0rd!x` |
+| invalido.auditor@aqpsolidaria.pe   | DONANTE + AUDITOR | `Passw0rd!x` |
+
+Los dos últimos son **inválidos a propósito**: se crean directo en el pool para ver que toda acción protegida responde 403 `SEPARATION_OF_DUTIES`. `donante.revisor@` sirve para comprobar que un revisor no ve en su cola sus propias donaciones retenidas, y `donante.gestor@` para comprobar que no se puede donar a un proyecto propio. Con `admin@` se prueba la pantalla «Usuarios». Ninguna de las combinaciones inválidas se puede crear desde esa pantalla ni con `npm run role`.
 
 ### Paso obligatorio: confiar en el certificado del emulador
 
