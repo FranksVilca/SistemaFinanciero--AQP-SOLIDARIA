@@ -8,7 +8,14 @@ import { handler as getProjectStats } from "../../src/projects/getProjectStats.j
 import { handler as listProjects } from "../../src/projects/listProjects.js";
 import { DONATION_STATUS, PROJECT_STATUS } from "../../src/shared/constants.js";
 import { buildEvent, identityFor, parseBody } from "./helpers/events.js";
-import { clearAllTables, readAllAuditEvents, readDonation, readProject, seedDonation, seedProject } from "./helpers/seed.js";
+import {
+  clearAllTables,
+  readAllAuditEvents,
+  readDonation,
+  readProject,
+  seedDonation,
+  seedProject,
+} from "./helpers/seed.js";
 
 const closeEvent = (sub: string, projectId: string, role: "GESTOR" | "DONANTE" | "REVISOR" = "GESTOR") =>
   buildEvent({ identity: { sub, groups: [role] }, pathParameters: { projectId } });
@@ -82,7 +89,11 @@ describe("closing a campaign", () => {
     await closeProject(closeEvent("the-owner", String(project.projectId)));
     const success = (await readAllAuditEvents()).find((event) => event.eventType === "PROJECT_CLOSED");
 
-    expect(success).toMatchObject({ action: "CloseProject", outcome: "SUCCESS", resourceRef: `project:${project.projectId}` });
+    expect(success).toMatchObject({
+      action: "CloseProject",
+      outcome: "SUCCESS",
+      resourceRef: `project:${project.projectId}`,
+    });
   });
 });
 
@@ -104,7 +115,11 @@ describe("what a closed campaign does", () => {
     const donation = await seedDonation(donor.sub, String(project.projectId));
 
     const response = await simulateDonation(
-      buildEvent({ identity: donor, pathParameters: { donationId: String(donation.donationId) }, body: { action: "CONFIRMAR" } })
+      buildEvent({
+        identity: donor,
+        pathParameters: { donationId: String(donation.donationId) },
+        body: { action: "CONFIRMAR" },
+      })
     );
 
     expect(response.statusCode).toBe(200);
@@ -114,7 +129,11 @@ describe("what a closed campaign does", () => {
 
   it("stays visible to everyone, in the catalog and by id, with its status", async () => {
     const open = await seedProject({ title: "Abierta", createdAt: "2026-01-02T00:00:00.000Z" });
-    const closed = await seedProject({ title: "Cerrada", status: PROJECT_STATUS.closed, createdAt: "2026-01-03T00:00:00.000Z" });
+    const closed = await seedProject({
+      title: "Cerrada",
+      status: PROJECT_STATUS.closed,
+      createdAt: "2026-01-03T00:00:00.000Z",
+    });
     await seedProject({ title: "Borrador", status: PROJECT_STATUS.draft });
 
     const listed = parseBody<Array<Record<string, unknown>>>(await listProjects(buildEvent()));
@@ -133,9 +152,15 @@ describe("progress beyond the goal", () => {
   it("is not capped at 100%: a campaign that raised 120% of its goal says so", async () => {
     const project = await seedProject({ goalAmountCents: 10_000, confirmedAmountCents: 12_000 });
 
-    const stats = parseBody(await getProjectStats(buildEvent({ pathParameters: { projectId: String(project.projectId) } })));
+    const stats = parseBody(
+      await getProjectStats(buildEvent({ pathParameters: { projectId: String(project.projectId) } }))
+    );
 
-    expect(stats).toMatchObject({ progressPercentage: 120, confirmedAmountCents: 12_000, status: PROJECT_STATUS.published });
+    expect(stats).toMatchObject({
+      progressPercentage: 120,
+      confirmedAmountCents: 12_000,
+      status: PROJECT_STATUS.published,
+    });
   });
 
   it("keeps taking donations after the goal is reached: reaching it does not close the campaign", async () => {
