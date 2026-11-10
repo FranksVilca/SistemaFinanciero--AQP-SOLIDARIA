@@ -22,7 +22,8 @@
     "local": "npm run local:stack --workspace=backend",
     "local:stop": "npm run local:stop --workspace=backend",
     "local:trust": "certutil -user -addstore Root .local/floci-root-ca.crt",
-    "test:browser": "npm run test:browser --workspace=backend"
+    "test:browser": "npm run test:browser --workspace=backend",
+    "test:performance:local": "npm run test:performance:local --workspace=backend"
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",

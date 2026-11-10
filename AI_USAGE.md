@@ -34,6 +34,13 @@ En cumplimiento de las directivas del curso y la sección §10 de [design.md](./
 - Limitaciones: los claims se construyen en los eventos de prueba y la suite sustituye Cognito userInfo y grupos;
   no se declara evidencia de JWT, IAM, MFA, cambios reales de IP ni ejecución en AWS.
 
+## Rendimiento y pruebas de rechazo con Codex — 2026-11-09
+
+- OpenAI Codex asistió en los perfiles k6, el dataset de 50 proyectos en Floci y el workflow de ensayo corto.
+- Método, resultados locales y pruebas del propio comprobador: `evidence/performance-method.md`.
+- Participante y revisión humana pendientes de confirmación. La medición en AWS, la correlación de cold starts
+  y la conformidad con el origen regional del cliente no se dan por realizadas. No se declara resistencia a DDoS.
+
 ## QA de accesibilidad asistido con Codex — 2026-11-09
 
 - OpenAI Codex asistió en el diálogo de donación y la prueba de móvil y teclado en Playwright.
