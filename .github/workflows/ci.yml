@@ -215,7 +215,7 @@ jobs:
           --parameter-overrides
           StageName=academic
           CognitoDomainPrefix=${{ vars.COGNITO_DOMAIN_PREFIX }}
-          EnablePitr=false
+          EnablePitr=true
           EnableCloudTrail=false
           EnableGuardDuty=false
           EnableSecurityHub=false

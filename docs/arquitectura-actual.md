@@ -219,7 +219,7 @@ Aquí se aclara **qué servicio se dejó fuera o apagado y por qué**, para que 
 
 ### 9.4 Lo que el proyecto exige desde el principio y la cuenta real no tiene
 - **Alerta de gasto en AWS Budgets.** Aparece en la primera especificación (`specs/001`, RNF-09), en [requirements.md](../requirements.md) (CA-NF09.1) y en `design.md`; el plan de `specs/001` incluso la da por configurada «desde el día 1» para mitigar el riesgo de facturación inesperada. **Ya está en la plantilla** (recurso `CostBudget`, D14), pero **solo se crea si se define la variable `ALERT_EMAIL`** y se aplicó antes el stack de bootstrap con el permiso `budgets`. Mientras eso no se haga, la cuenta sigue sin presupuesto. La lista de precios no cobra una alerta de gasto por correo (solo los presupuestos *con acciones* y los informes enviados). El resto de P7 (alarmas) sigue pendiente.
-- **Alarmas de CloudWatch y SNS:** la plantilla no define ninguna y la cuenta no tiene alarmas. Cuestan USD 0.10 por alarma al mes, y las primeras 1,000 notificaciones de correo de SNS al mes son gratuitas.
+- **Alarmas de CloudWatch y SNS:** ya están en la plantilla (D17): cuatro alarmas (5xx del API, errores de Lambda, ejecuciones rechazadas por concurrencia y el job diario sin ejecutarse) y un tópico SNS con suscripción por correo. Se crean con la misma variable `ALERT_EMAIL`, tras reaplicar el bootstrap, y hay que confirmar la suscripción desde el correo. Cuestan USD 0.10 por alarma al mes, y las primeras 1,000 notificaciones de correo de SNS al mes son gratuitas.
 - **Cuenta de operación.** Hoy se opera con la cuenta root de AWS (P3).
 
 ### 9.5 Resumen de la cuenta real (2026-11-09)
@@ -229,8 +229,8 @@ Aquí se aclara **qué servicio se dejó fuera o apagado y por qué**, para que 
 | Plan del user pool | ESSENTIALS (el valor por defecto), MFA activado |
 | Trails de CloudTrail | Ninguno |
 | GuardDuty y Security Hub | No activados en la cuenta |
-| PITR en las 4 tablas | Apagado |
-| Presupuestos (AWS Budgets) | Ninguno (la plantilla ya lo define; se crea al configurar `ALERT_EMAIL`) |
+| PITR en las 4 tablas | Apagado (D18 lo activa en el próximo despliegue) |
+| Presupuestos (AWS Budgets) | `aqp-solidaria-academic-monthly`, USD 5 al mes (comprobado con el AWS CLI tras el despliegue) |
 | Concurrencia de Lambda de la cuenta | Límite de 10 ejecuciones, todas sin reservar (por eso no se puede reservar concurrencia por función) |
 | Alarmas de CloudWatch | Ninguna |
 

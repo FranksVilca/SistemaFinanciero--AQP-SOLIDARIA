@@ -98,7 +98,8 @@ Conditions:
   CloudTrailEnabled: !Equals [!Ref EnableCloudTrail, 'true']
   GuardDutyEnabled: !Equals [!Ref EnableGuardDuty, 'true']
   SecurityHubEnabled: !Equals [!Ref EnableSecurityHub, 'true']
-  BudgetEnabled: !Not [!Equals [!Ref AlertEmail, '']]
+  # The spend alert and the alarms both need somewhere to send the warning; without an email neither is created.
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
 
 Globals:
   Function:
@@ -337,7 +338,7 @@ Resources:
   # ============================================================================
   CostBudget:
     Type: AWS::Budgets::Budget
-    Condition: BudgetEnabled
+    Condition: HasAlertEmail
     Properties:
       Budget:
         BudgetName: !Sub "aqp-solidaria-${StageName}-monthly"
@@ -371,6 +372,106 @@ Resources:
           Subscribers:
             - SubscriptionType: EMAIL
               Address: !Ref AlertEmail
+
+  # ============================================================================
+  # ALARMAS: cuatro, a propósito (cada alarma estándar cuesta USD 0.10 al mes). Avisan por correo (SNS) cuando algo falla
+  # de verdad: un 5xx del API, un error de Lambda, una ejecución rechazada por el límite de concurrencia de la cuenta (10)
+  # o que el job de vencimiento diario deje de ejecutarse. Los 4xx esperados no cuentan (se registran como warn, ver D9). Solo se crean si
+  # AlertEmail no está vacío. La suscripción de correo hay que confirmarla desde el mensaje que llega a esa dirección.
+  # ============================================================================
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasAlertEmail
+    Properties:
+      TopicName: !Sub "aqp-solidaria-${StageName}-alarms"
+
+  AlarmSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn: !Ref AlarmTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  ApiServerErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasAlertEmail
+    Properties:
+      AlarmName: !Sub "aqp-solidaria-${StageName}-api-5xx"
+      AlarmDescription: El API respondió al menos un 5xx en 5 minutos.
+      Namespace: AWS/ApiGateway
+      MetricName: 5xx
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref HttpApi
+        - Name: Stage
+          Value: !Ref StageName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlarmTopic
+
+  LambdaErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasAlertEmail
+    Properties:
+      AlarmName: !Sub "aqp-solidaria-${StageName}-lambda-errors"
+      AlarmDescription: Alguna función Lambda terminó con error al menos una vez en 5 minutos (toda la cuenta y región).
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlarmTopic
+
+  LambdaThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasAlertEmail
+    Properties:
+      AlarmName: !Sub "aqp-solidaria-${StageName}-lambda-throttles"
+      AlarmDescription: Se rechazó una ejecución por el límite de concurrencia de la cuenta (10) al menos una vez en 5 minutos.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlarmTopic
+
+  # A failed run of the daily job is already caught by LambdaErrorsAlarm; this one catches what that cannot, the job
+  # silently not running. It runs once a day, so two days in a row without an invocation (not one: a run that drifts
+  # across midnight UTC would leave a day empty) means the schedule is broken or disabled.
+  ExpireReviewsNotRunningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasAlertEmail
+    Properties:
+      AlarmName: !Sub "aqp-solidaria-${StageName}-expire-reviews-not-running"
+      AlarmDescription: El job diario que vence las revisiones no se ejecutó en dos días seguidos.
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ExpireReviewsFunction
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref AlarmTopic
 
   # ============================================================================
   # DETECCIÓN OPCIONAL con pruebas de 30 días (apagadas por defecto, ver Parameters)

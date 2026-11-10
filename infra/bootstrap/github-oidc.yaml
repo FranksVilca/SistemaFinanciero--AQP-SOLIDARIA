@@ -183,6 +183,7 @@ Resources:
       ManagedPolicyArns:
         - !Ref ComputeAndDataPolicy
         - !Ref EdgeAndIdentityPolicy
+        - !Ref AlertsPolicy
 
   # Compute, data and access: functions, tables, API, their roles and their logs.
   ComputeAndDataPolicy:
@@ -468,14 +469,60 @@ Resources:
             Effect: Allow
             Action: cloudtrail:DescribeTrails
             Resource: "*"
-          # The monthly spend alert (CostBudget). Budgets has no separate create action: ModifyBudget creates, changes and
-          # deletes the budget and its notifications.
+
+  # Spend alert and alarms: the budget, the SNS topic that mails the warnings and the CloudWatch alarms. A policy of its
+  # own because the one above is close to the size limit of a managed policy.
+  AlertsPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_111
+            comment: >-
+              DescribeAlarms does not accept a resource and only reads. Everything that changes something is limited to
+              this account, this region and the names of the application.
+    Properties:
+      ManagedPolicyName: aqp-solidaria-deploy-alerts
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # Budgets has no separate create action: ModifyBudget creates, changes and deletes the budget and its notifications.
           - Sid: SpendBudget
             Effect: Allow
             Action:
               - budgets:ViewBudget
               - budgets:ModifyBudget
             Resource: !Sub "arn:${AWS::Partition}:budgets::${AWS::AccountId}:budget/aqp-solidaria-${StageName}-*"
+          - Sid: AlarmTopic
+            Effect: Allow
+            Action:
+              - sns:CreateTopic
+              - sns:DeleteTopic
+              - sns:GetTopicAttributes
+              - sns:SetTopicAttributes
+              - sns:Subscribe
+              - sns:Unsubscribe
+              - sns:ListSubscriptionsByTopic
+              - sns:GetSubscriptionAttributes
+              - sns:SetSubscriptionAttributes
+              - sns:ListTagsForResource
+              - sns:TagResource
+              - sns:UntagResource
+            Resource: !Sub "arn:${AWS::Partition}:sns:${AWS::Region}:${AWS::AccountId}:aqp-solidaria-${StageName}-*"
+          - Sid: Alarms
+            Effect: Allow
+            Action:
+              - cloudwatch:PutMetricAlarm
+              - cloudwatch:DeleteAlarms
+              - cloudwatch:ListTagsForResource
+              - cloudwatch:TagResource
+              - cloudwatch:UntagResource
+            Resource: !Sub "arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:aqp-solidaria-${StageName}-*"
+          # Reading alarms does not accept a resource.
+          - Sid: ReadingAlarms
+            Effect: Allow
+            Action: cloudwatch:DescribeAlarms
+            Resource: "*"
 
 Outputs:
   GitHubDeployRoleArn:

@@ -33,6 +33,50 @@ describe.each(STAGES)("spend alert in stage %s", (stage) => {
   });
 });
 
+const EMAIL = { AlertEmail: "alertas@example.com" };
+
+describe.each(STAGES)("alarms in stage %s", (stage) => {
+  it("are not created without an alert email", () => {
+    const template = loadTemplate(stage);
+    for (const type of ["AWS::CloudWatch::Alarm", "AWS::SNS::Topic", "AWS::SNS::Subscription"]) {
+      expect(resourcesOfType(template, type), type).toHaveLength(0);
+    }
+  });
+
+  it("are four, mail one topic and nothing else, so the monthly cost stays at cents", () => {
+    const template = loadTemplate(stage, EMAIL);
+    const alarms = resourcesOfType(template, "AWS::CloudWatch::Alarm");
+    const [[topicId]] = resourcesOfType(template, "AWS::SNS::Topic");
+    const [[, subscription]] = resourcesOfType(template, "AWS::SNS::Subscription");
+
+    expect(alarms).toHaveLength(4);
+    expect(propertiesOf(subscription).Protocol).toBe("email");
+    for (const [name, alarm] of alarms) {
+      expect(propertiesOf(alarm).AlarmActions, name).toEqual([{ Ref: topicId }]);
+      expect(propertiesOf(alarm).OKActions, `${name} does not mail when it recovers`).toBeUndefined();
+    }
+  });
+
+  it("watch the 5xx of the API, the errors and throttles of Lambda, and the daily job not running", () => {
+    const alarms = resourcesOfType(loadTemplate(stage, EMAIL), "AWS::CloudWatch::Alarm");
+    const watched = alarms.map(([, alarm]) => `${propertiesOf(alarm).Namespace} ${propertiesOf(alarm).MetricName}`);
+
+    expect(watched.sort()).toEqual(["AWS/ApiGateway 5xx", "AWS/Lambda Errors", "AWS/Lambda Invocations", "AWS/Lambda Throttles"]);
+  });
+
+  it("never alarm on 4xx, which are the expected refusals (D9)", () => {
+    const alarms = resourcesOfType(loadTemplate(stage, EMAIL), "AWS::CloudWatch::Alarm");
+    expect(alarms.map(([, alarm]) => propertiesOf(alarm).MetricName)).not.toContain("4xx");
+  });
+
+  it("treat missing data as healthy, except the daily job, whose silence is the failure", () => {
+    for (const [name, alarm] of resourcesOfType(loadTemplate(stage, EMAIL), "AWS::CloudWatch::Alarm")) {
+      const silence = propertiesOf(alarm).MetricName === "Invocations";
+      expect(propertiesOf(alarm).TreatMissingData, name).toBe(silence ? "breaching" : "notBreaching");
+    }
+  });
+});
+
 describe("alert parameters", () => {
   const parameters = rawParameters();
 

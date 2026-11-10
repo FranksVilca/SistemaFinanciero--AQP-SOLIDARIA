@@ -74,7 +74,7 @@ Documento vivo. Recoge **qué hace el sistema que puede parecer un fallo pero no
 - **El stack de bootstrap no lo despliega el CI** (ver D7): si cambia, una persona lo aplica antes del push.
 
 ### A11. Lo desplegado no activa todo lo que la plantilla permite
-- **Qué se ve:** la plantilla tiene parámetros para CloudTrail, PITR, GuardDuty y Security Hub, pero `samconfig.toml` los deja en `false`. En la cuenta real (comprobado el 2026-11-09 con el AWS CLI): no hay ningún trail, PITR está apagado en las 4 tablas, GuardDuty y Security Hub no están activados, y no existe ningún presupuesto ni alarma (el presupuesto ya está en la plantilla y se crea al configurar `ALERT_EMAIL`, D14).
+- **Qué se ve:** la plantilla tiene parámetros para CloudTrail, PITR, GuardDuty y Security Hub, pero `samconfig.toml` los deja en `false`. En la cuenta real (comprobado el 2026-11-09 con el AWS CLI): no hay ningún trail, PITR está apagado en las 4 tablas (se activa con D18), GuardDuty y Security Hub no están activados, y no existe ningún presupuesto ni alarma (el presupuesto ya está en la plantilla y se crea al configurar `ALERT_EMAIL`, D14).
 - **Por qué:** son servicios opcionales por costo o por prueba de 30 días (detalle y certeza de cada uno en [arquitectura-actual.md](arquitectura-actual.md), sección 9).
 - **Consecuencia:** no hay registro de quién cambió la infraestructura (la auditoría de la **aplicación** sí existe), ni restauración a un punto en el tiempo, ni aviso de costos.
 - **Certeza:** Verificado (AWS CLI).
@@ -170,6 +170,20 @@ Formato: qué se decidió, por qué, qué alternativas había y quién decidió.
 - **Lo que acota la carga hoy:** el propio límite de la cuenta (10) y el límite de tasa del API Gateway (25/50 por defecto, 10/20 en las lecturas). El control `CKV_AWS_115` ya estaba omitido en `.checkov.yaml` con ese motivo.
 - **Cuándo revisarlo:** si se sube el límite de la cuenta (solicitud de aumento de cuota).
 
+### D17. Cuatro alarmas de CloudWatch con aviso por correo (SNS)
+- **Decisión:** `AlarmTopic` (SNS, suscripción por correo a `AlertEmail`) y cuatro alarmas: 5xx del API, errores de Lambda, ejecuciones rechazadas por el límite de concurrencia (`Throttles`) y el job diario de vencimiento sin ejecutarse dos días seguidos. Se crean solo si `AlertEmail` no está vacío (la misma variable `ALERT_EMAIL` del presupuesto).
+- **Por qué solo cuatro:** cada alarma estándar cuesta USD 0.10 al mes (**Precio AWS**): unos USD 0.40 al mes, sin contar un posible tramo gratuito que **no se verificó**. Los 4xx esperados no alarman (D9). La de Throttles importa porque la cuenta solo tiene 10 ejecuciones concurrentes (D16).
+- **Límites:** la alarma de errores de Lambda mide toda la cuenta y región, no solo este stack. No avisa al recuperarse. El tópico no está cifrado (CloudWatch no puede publicar en un tópico cifrado con la clave administrada de AWS y una clave propia cuesta USD 1 al mes; solo lleva nombres de alarmas); queda omitido `CKV_AWS_26` en `.checkov.yaml`.
+- **Para que lleguen:** hay que **confirmar la suscripción** en el correo que manda AWS tras el despliegue; sin eso SNS no entrega nada.
+- **Permisos:** una tercera política en el bootstrap (`AlertsPolicy`: budgets, sns, cloudwatch), que hay que reaplicar antes del push (D7). **No verificado** contra AWS real: la lista de acciones sale de la documentación y, si falta alguna, el despliegue falla con `AccessDenied` y nombra la acción.
+- **Cierra:** P7.
+
+### D18. PITR de DynamoDB activado en el despliegue académico
+- **Decisión:** `EnablePitr=true` en `ci.yml` y `samconfig.toml` (en `production` ya estaba siempre activo).
+- **Por qué:** permite restaurar Projects, Donations y Audit a un punto de los últimos 35 días. Se factura por GB de copia (USD 0.20 por GB al mes, **Precio AWS**): con tablas de decenas de MB son centavos. El motivo por el que estaba apagado nunca consta en el repositorio.
+- **Efecto:** no cambia datos ni comportamiento; solo activa la copia continua. No cubre la tabla de idempotencia (datos con TTL de 24 horas).
+- **Para desactivarlo:** `EnablePitr=false`.
+
 ---
 
 ## Parte C. Decisiones pendientes
@@ -182,7 +196,7 @@ Formato: qué se decidió, por qué, qué alternativas había y quién decidió.
 | P4 | Inicio de sesión silencioso | ¿Evitar el clic tras recargar sin persistir tokens? | Probarlo contra el stack antes de decidir (ver D6). |
 | P5 | Índice `status-createdAt-index` | Indexa todas las donaciones con proyección `ALL`. | Convertirlo en índice disperso si el volumen crece. |
 | P6 | ~~Plan de Cognito~~ | **Resuelto** en D15 (Essentials declarado). Queda como mejora opcional pasar a Lite, probando antes la revocación de tokens. | — |
-| P7 | Alertas de costo | **Ya era pendiente desde `specs/001`** (RNF-09; también `requirements.md` CA-NF09.1 y `design.md`). **Resuelta a medias:** el presupuesto está en la plantilla (D14) y falta activarlo (bootstrap y variable `ALERT_EMAIL`). Siguen pendientes las alarmas de CloudWatch con SNS (USD 0.10 por alarma al mes). | Activar D14 y crear 4 o 5 alarmas (5xx del API, errores de Lambda, job de vencimiento). |
+| P7 | ~~Alertas de costo~~ | **Resuelto**: presupuesto (D14, activo en la cuenta desde 2026-11-09) y alarmas (D17, pendientes de reaplicar el bootstrap y confirmar la suscripción). | — |
 
 ---
 

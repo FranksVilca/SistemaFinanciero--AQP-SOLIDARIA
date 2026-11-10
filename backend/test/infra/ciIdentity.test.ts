@@ -29,7 +29,7 @@ const statementsOf = (document: Json): Statement[] => (document as unknown as { 
 const githubRole = resources.GitHubDeployRole;
 const executionRole = resources.CloudFormationExecutionRole;
 const githubStatements = statementsOf(((propertiesOf(githubRole).Policies as JsonObject[])[0] as JsonObject).PolicyDocument);
-const executionStatements = ["ComputeAndDataPolicy", "EdgeAndIdentityPolicy"].flatMap((name) =>
+const executionStatements = ["ComputeAndDataPolicy", "EdgeAndIdentityPolicy", "AlertsPolicy"].flatMap((name) =>
   statementsOf(propertiesOf(resources[name]).PolicyDocument)
 );
 
@@ -173,8 +173,12 @@ describe("the role that creates the resources, usable only by CloudFormation", (
     );
   });
 
-  it("carries only its own two policies, no managed policy of AWS", () => {
-    expect(propertiesOf(executionRole).ManagedPolicyArns).toEqual([{ Ref: "ComputeAndDataPolicy" }, { Ref: "EdgeAndIdentityPolicy" }]);
+  it("carries only its own three policies, no managed policy of AWS", () => {
+    expect(propertiesOf(executionRole).ManagedPolicyArns).toEqual([
+      { Ref: "ComputeAndDataPolicy" },
+      { Ref: "EdgeAndIdentityPolicy" },
+      { Ref: "AlertsPolicy" },
+    ]);
     expect(propertiesOf(executionRole).Policies).toBeUndefined();
   });
 
@@ -186,7 +190,7 @@ describe("the role that creates the resources, usable only by CloudFormation", (
   // events: the EventBridge rule of the daily review expiry (ExpireReviewsFunction).
   it("uses no service that the application does not need", () => {
     expect(new Set(allActions.map((action) => action.split(":")[0]))).toEqual(
-      new Set(["cloudformation", "dynamodb", "lambda", "iam", "apigateway", "logs", "cognito-idp", "cloudfront", "s3", "cloudtrail", "events", "budgets"])
+      new Set(["cloudformation", "dynamodb", "lambda", "iam", "apigateway", "logs", "cognito-idp", "cloudfront", "s3", "cloudtrail", "events", "budgets", "sns", "cloudwatch"])
     );
   });
 
@@ -231,6 +235,7 @@ describe("the role that creates the resources, usable only by CloudFormation", (
       "CreatingAndFindingUserPools",
       "Distribution",
       "FindingTrails",
+      "ReadingAlarms",
     ];
     const withoutResource = executionStatements.filter((statement) => resourcesOf(statement).includes("*"));
 
@@ -257,6 +262,9 @@ describe("what the application template needs is covered", () => {
     "AWS::ApiGatewayV2::Api": ["apigateway:POST"],
     "AWS::ApiGatewayV2::Stage": ["apigateway:POST"],
     "AWS::Budgets::Budget": ["budgets:ModifyBudget"],
+    "AWS::CloudWatch::Alarm": ["cloudwatch:PutMetricAlarm"],
+    "AWS::SNS::Topic": ["sns:CreateTopic"],
+    "AWS::SNS::Subscription": ["sns:Subscribe"],
     "AWS::CloudFront::Distribution": ["cloudfront:CreateDistribution"],
     "AWS::CloudFront::OriginAccessControl": ["cloudfront:CreateOriginAccessControl"],
     "AWS::CloudFront::ResponseHeadersPolicy": ["cloudfront:CreateResponseHeadersPolicy"],
